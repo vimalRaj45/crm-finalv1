@@ -5,7 +5,8 @@
   "main": "email-ingest.js",
   "scripts": {
     "start": "node email-ingest.js",
-    "batch": "node test.js"
+    "batch": "node test.js",
+    "build": "npx playwright install --with-deps chromium"
   },
   "keywords": [],
   "author": "",
