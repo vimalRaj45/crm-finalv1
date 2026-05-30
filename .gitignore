@@ -1,0 +1,5 @@
+node_modules/
+.env
+job-details.json
+service-account.json
+.history/
