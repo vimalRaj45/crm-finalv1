@@ -6,7 +6,7 @@
   "scripts": {
     "start": "node email-ingest.js",
     "batch": "node test.js",
-    "build": "npx playwright install chromium"
+    "build": "PLAYWRIGHT_BROWSERS_PATH=./.playwright-browsers npx playwright install chromium"
   },
   "keywords": [],
   "author": "",

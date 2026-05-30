@@ -1,6 +1,9 @@
 import { chromium } from "playwright";
 import fs from "fs";
 
+// Ensure Playwright looks for browsers inside the project directory for Render persistence
+process.env.PLAYWRIGHT_BROWSERS_PATH = process.env.PLAYWRIGHT_BROWSERS_PATH || "./.playwright-browsers";
+
 // Clean and decode DuckDuckGo/Bing redirect URLs
 function cleanUrl(rawUrl) {
   if (!rawUrl) return "";
