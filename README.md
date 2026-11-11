@@ -1,4 +1,4 @@
-# 🚀 Revix CRM | Autonomous AI Lead Intelligence & Revenue Execution Hub
+# 🚀 SalesForge AI | Autonomous AI Lead Intelligence & Revenue Execution Hub
 
 A full-stack, enterprise AI lead prospecting, cold outreach automation, and CRM platform built with **Node.js, Express, PostgreSQL, Mistral AI (Small & Large), Playwright Chromium, and Google OAuth2**.
 
@@ -53,14 +53,14 @@ docker compose up -d --build
 #### Option B: Standalone Docker
 ```bash
 # 1. Build Image
-docker build -t revix-crm .
+docker build -t salesforge-ai .
 
 docker run -d -p 3000:3000 \
   --env-file .env \
-  --name revix-crm \
+  --name salesforge-crm \
   --restart unless-stopped \
-  -v revix_whatsapp:/app/backend/baileys_auth_info \
-  revix-crm
+  -v salesforge_whatsapp:/app/backend/baileys_auth_info \
+  salesforge-ai
 ```
 Visit **`http://localhost:3000`** in your browser.
 
