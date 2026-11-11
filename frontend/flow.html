@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Auth Interceptor -->
+  <script>
+    (function() {
+      const params = new URLSearchParams(window.location.search);
+      const queryToken = params.get("token");
+      if (queryToken) {
+        localStorage.setItem("CRM_auth_token", queryToken);
+        params.delete("token");
+        const newSearch = params.toString();
+        const cleanUrl = window.location.pathname + (newSearch ? "?" + newSearch : "");
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+
+      const token = localStorage.getItem("CRM_auth_token");
+      if (!token && !window.location.pathname.includes("login.html")) {
+        return;
+      }
+      
+      const originalFetch = window.fetch;
+      window.fetch = async function(...args) {
+        let [resource, config] = args;
+        const currentToken = localStorage.getItem("CRM_auth_token");
+        if (typeof resource === 'string' && resource.startsWith("/api/")) {
+          config = config || {};
+          config.headers = config.headers || {};
+          config.headers["Authorization"] = `Bearer ${currentToken}`;
+        }
+        const response = await originalFetch(resource, config);
+        if (response.status === 401 && !window.location.pathname.includes("login.html")) {
+          localStorage.removeItem("CRM_auth_token");
+          window.location.href = "/login.html";
+        }
+        return response;
+      };
+      
+      const originalEventSource = window.EventSource;
+      window.EventSource = function(url, ...rest) {
+        const currentToken = localStorage.getItem("CRM_auth_token");
+        const sseUrl = url + (url.includes("?") ? "&" : "?") + "token=" + currentToken;
+        return new originalEventSource(sseUrl, ...rest);
+      };
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>Salesforge System - System Architecture & Qualification Flow</title>
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Bootstrap Icons -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          colors: {
+            'brand-blue': '#2563eb',
+            'brand-cyan': '#06b6d4',
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    body {
+      background-color: #F6F8FB;
+      color: #172033;
+    }
+    
+    /* Triple Morphism Trinity Fusion Styling */
+    .step-card {
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.95) 0%, rgba(248, 250, 252, 0.85) 100%);
+      backdrop-filter: blur(16px);
+      border-radius: 20px;
+      border: 1px solid rgba(255, 255, 255, 0.9);
+      box-shadow: 8px 12px 24px rgba(15, 23, 42, 0.06), -5px -5px 15px rgba(255, 255, 255, 0.95), inset 1.5px 1.5px 3px rgba(255, 255, 255, 1);
+      transition: all 200ms cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .step-card:hover {
+      box-shadow: 12px 18px 32px rgba(15, 23, 42, 0.09), -7px -7px 20px rgba(255, 255, 255, 1), inset 2px 2px 4px rgba(255, 255, 255, 1);
+      transform: translateY(-2px);
+    }
+    .step-card.active-step {
+      border-color: #BFDBFE;
+      box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.15), 10px 14px 28px rgba(37, 99, 235, 0.15), inset 2px 2px 4px rgba(255, 255, 255, 1);
+      transform: translateY(-2px);
+      background: linear-gradient(135deg, #FFFFFF 0%, #EFF6FF 100%);
+    }
+
+    /* Animated path dot animation */
+    @keyframes pulse-flow {
+      0% { top: 0%; opacity: 0; }
+      10% { opacity: 1; }
+      90% { opacity: 1; }
+      100% { top: 100%; opacity: 0; }
+    }
+    .flow-dot {
+      position: absolute;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background-color: #2563eb;
+      box-shadow: 0 0 12px #2563eb;
+      left: 50%;
+      transform: translateX(-50%);
+      animation: pulse-flow 3s ease-in-out infinite;
+    }
+    .fade-in {
+      animation: fadeIn 0.4s ease-out forwards;
+    }
+    @keyframes fadeIn {
+      from { opacity: 0; transform: translateY(10px); }
+      to { opacity: 1; transform: translateY(0); }
+    }
+  </style>
+</head>
+<body class="font-sans antialiased text-[#172033] min-h-screen flex flex-col bg-[#F6F8FB]">
+
+  <!-- Top Header Navigation -->
+  <header class="sticky top-0 z-50 bg-white/90 backdrop-blur-md border-b border-[#E2E8F0] shadow-sm">
+    <div class="max-w-7xl mx-auto px-4 sm:px-6 py-3 flex items-center justify-between">
+      <div class="flex items-center space-x-3">
+        <div class="h-9 w-9 rounded-xl bg-[#2563EB] flex items-center justify-center shadow-md shadow-blue-500/25">
+          <i class="bi bi-diagram-3-fill text-base text-white animate-pulse"></i>
+        </div>
+        <div>
+          <span class="font-extrabold text-sm sm:text-base tracking-tight block leading-tight text-[#172033]">Salesforge System Intelligence</span>
+          <span class="text-[10px] text-[#2563EB] font-bold leading-none block mt-0.5">8-Step Architecture Visualizer</span>
+        </div>
+      </div>
+      <div class="flex items-center space-x-2">
+        <button id="btnSimulate" onclick="toggleSimulation()" class="hidden lg:flex items-center space-x-1.5 bg-[#2563EB] hover:bg-[#1D4ED8] text-white text-xs font-semibold px-3.5 py-2 rounded-xl shadow-md transition-all">
+          <i class="bi bi-play-fill text-sm" id="simIcon"></i>
+          <span id="simText">Run Flow Simulation</span>
+        </button>
+        <a href="choose.html" class="flex items-center space-x-1 bg-white hover:bg-slate-50 text-[#2563EB] text-xs font-semibold px-3.5 py-2 rounded-xl border border-[#BFDBFE] transition-all shadow-sm">
+          <i class="bi bi-palette-fill"></i>
+          <span class="hidden sm:inline">Styles</span>
+        </a>
+        <a href="index.html" class="flex items-center space-x-1 bg-white hover:bg-slate-50 text-[#64748B] hover:text-[#172033] text-xs font-semibold px-3.5 py-2 rounded-xl border border-[#E2E8F0] transition-all shadow-sm">
+          <i class="bi bi-arrow-left"></i>
+          <span>Dashboard</span>
+        </a>
+      </div>
+    </div>
+  </header>
+
+  <!-- Main Content Container -->
+  <main class="flex-grow max-w-7xl w-full mx-auto px-6 py-10">
+    <div class="text-center mb-10 space-y-2">
+      <span class="inline-flex items-center gap-1.5 px-3 py-1 bg-[#EFF6FF] text-[#2563EB] border border-[#DBEAFE] rounded-full text-xs font-extrabold tracking-wide uppercase">
+        <i class="bi bi-[#2563EB] bi-cpu-fill"></i> End-to-End System Intelligence
+      </span>
+      <h1 class="text-3xl sm:text-4xl font-extrabold text-slate-900 tracking-tight">How Salesforge System Operates</h1>
+      <p class="text-slate-600 max-w-2xl mx-auto text-sm font-medium">
+        Explore the 8 core operational steps powering your automated CRM pipeline. Click on any card below to inspect rules<span class="hidden lg:inline"> or click <strong>Run Flow Simulation</strong></span>!
+      </p>
+    </div>
+
+    <!-- Main Grid System -->
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+      
+      <!-- Interactive Pipeline Steps Timeline (Left Columns) -->
+      <div class="lg:col-span-7 space-y-4">
+        
+        <!-- Step 1 -->
+        <div id="step-1" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(1)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            01
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Email Ingestion & De-duplication</h3>
+              <span class="text-[10px] bg-slate-100 text-slate-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">IMAP</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Backend connects to Gmail via secure IMAP. Normalizes subject lines and groups candidates to process 1 email per batch.
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-1" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 2 -->
+        <div id="step-2" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(2)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            02
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Stage 1: Job Extraction</h3>
+              <span class="text-[10px] bg-emerald-50 text-emerald-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-emerald-100">Mistral Small</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Extract R&D/Innovation leadership roles using Mistral Small LLM. Strictly exclude Pricing, Sales, Patents, and Operations.
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-2" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 3 -->
+        <div id="step-3" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(3)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            03
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Search & URL Prioritization</h3>
+              <span class="text-[10px] bg-indigo-50 text-indigo-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-indigo-100">Serper API</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Rank posting URLs strictly: LinkedIn Job &gt; Naukri &gt; Indeed &gt; BeBee &gt; SimplyHired &gt; Official Page.
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-3" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 4 -->
+        <div id="step-4" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(4)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            04
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Playwright Scraping & 7-Day Caching</h3>
+              <span class="text-[10px] bg-amber-50 text-amber-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-amber-100">Playwright</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Scrape full job description. Consult persistent 7-day cache file to verify company employee size.
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-4" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 5 -->
+        <div id="step-5" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(5)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            05
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Stage 2: Job Evaluation & Scoring</h3>
+              <span class="text-[10px] bg-rose-50 text-rose-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-rose-100">Mistral LLM</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Mistral classifies role brackets (0-100). System code adds Strategy boost (+15) or Pricing penalty (-20).
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-5" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 6 -->
+        <div id="step-6" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(6)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            06
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Threshold Decisions & Qualification</h3>
+              <span class="text-[10px] bg-sky-50 text-sky-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-sky-100">Validation</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Qualify only if LinkedIn employees ≥ 500 (unless score ≥ 80 when missing) AND score ≥ 50.
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-6" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 7 -->
+        <div id="step-7" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(7)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            07
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">CRM Conversion & Deals Board Sync</h3>
+              <span class="text-[10px] bg-purple-50 text-purple-600 font-bold px-2 py-0.5 rounded-full uppercase tracking-wider border border-purple-100">PostgreSQL</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Automatically creates Account, Contact, and Deal record in <strong>Lead (20%)</strong> stage on the Deals Board.
+            </p>
+          </div>
+        </div>
+
+        <!-- Connector Line -->
+        <div class="relative flex justify-center h-7">
+          <div class="h-full w-0.5 bg-slate-200"></div>
+          <div id="flow-dot-7" class="flow-dot hidden"></div>
+        </div>
+
+        <!-- Step 8 -->
+        <div id="step-8" class="step-card p-5 cursor-pointer flex space-x-5" onclick="showDetails(8)">
+          <div class="flex-shrink-0 flex items-center justify-center h-11 w-11 rounded-xl bg-blue-50 text-blue-600 font-extrabold text-lg border border-blue-100">
+            08
+          </div>
+          <div class="flex-grow">
+            <div class="flex items-center justify-between">
+              <h3 class="font-bold text-slate-800 text-base">Outreach Sequence Engine & Reply Scanner</h3>
+              <span class="text-[10px] bg-blue-600 text-white font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">Outreach & AI</span>
+            </div>
+            <p class="text-slate-600 text-xs mt-1">
+              Dispatches editable Day 0 email, auto-moves Deal card to <strong>Contacted (40%)</strong>, runs Day 3 & Day 7 follow-ups, and scans inbox for customer replies.
+            </p>
+          </div>
+        </div>
+
+      </div>
+
+      <!-- Detail Explainer Panel (Right Column) -->
+      <div class="lg:col-span-5 lg:sticky lg:top-28">
+        <div class="bg-white border border-slate-200 rounded-3xl p-6 shadow-sm overflow-hidden relative" style="box-shadow: 10px 14px 28px rgba(15, 23, 42, 0.07), inset 1.5px 1.5px 3px rgba(255, 255, 255, 1);">
+          <div class="absolute top-0 left-0 w-full h-2 bg-gradient-to-r from-blue-500 to-cyan-500"></div>
+          
+          <div id="welcome-detail">
+            <div class="flex justify-center py-12">
+              <div class="relative">
+                <i class="bi bi-info-circle text-6xl text-slate-300"></i>
+                <div class="absolute -top-1 -right-1 h-3 w-3 bg-blue-500 rounded-full animate-ping"></div>
+              </div>
+            </div>
+            <h4 class="font-bold text-slate-800 text-lg text-center mb-2">Interactive Workflow Details</h4>
+            <p class="text-slate-500 text-sm text-center">
+              Click on any stage card on the left to see detailed rules, configurations, and API payload definitions, or run the simulation above!
+            </p>
+          </div>
+
+          <div id="content-detail" class="hidden space-y-5 fade-in">
+            <div class="flex items-center space-x-3">
+              <div id="detail-num" class="h-8 w-8 rounded-lg bg-blue-600 flex items-center justify-center text-white font-bold text-sm shadow-md shadow-blue-500/20"></div>
+              <h4 id="detail-title" class="font-bold text-slate-800 text-base leading-tight"></h4>
+            </div>
+            
+            <hr class="border-slate-100">
+            
+            <div>
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1">Under the hood</span>
+              <p id="detail-desc" class="text-slate-600 text-sm leading-relaxed"></p>
+            </div>
+
+            <div id="detail-rule-section">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">Rule Enforcement Matrix</span>
+              <div id="detail-rules" class="bg-slate-50 border border-slate-100 p-3.5 rounded-xl font-mono text-xs text-slate-700 whitespace-pre-wrap leading-relaxed"></div>
+            </div>
+
+            <div id="detail-api-section">
+              <span class="text-[10px] font-semibold text-slate-400 uppercase tracking-wider block mb-1.5">API / System Route</span>
+              <span id="detail-api" class="inline-block bg-blue-50 text-blue-700 font-mono text-xs px-2.5 py-1.5 rounded-lg border border-blue-100"></span>
+            </div>
+
+            <hr class="border-slate-100">
+
+            <div class="flex justify-between items-center pt-2">
+              <button id="btnPrevStep" onclick="navigateStep(-1)" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all">
+                <i class="bi bi-arrow-left"></i>
+                <span>Previous</span>
+              </button>
+              <button id="btnNextStep" onclick="navigateStep(1)" class="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold rounded-lg flex items-center gap-1.5 transition-all shadow-sm shadow-blue-500/10">
+                <span>Next Step</span>
+                <i class="bi bi-arrow-right"></i>
+              </button>
+            </div>
+          </div>
+
+        </div>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- Footer -->
+  <footer class="bg-slate-900 text-slate-400 border-t border-slate-800 py-8 text-center text-xs mt-auto">
+    <div class="max-w-7xl mx-auto px-6">
+      <p>© 2026 Salesforge System Intelligence Portal. All-in-One Automated Pipeline & Outreach Engine.</p>
+    </div>
+  </footer>
+
+  <script>
+    const stepsData = {
+      1: {
+        title: "Email Ingestion & De-duplication",
+        desc: "Backend connects to Gmail via secure IMAP. Fetches unread email lists from allowed senders. Normalized subjects are date-stripped using regex and grouped to process ONLY the latest unique email.",
+        rules: "1. Group by subject string (lowercased, date-stripped)\n2. Select ONLY the latest email in the group for extraction\n3. Mark duplicates as SKIPPED_DUPLICATE_EMAIL & set Gmail seen flag",
+        api: "fetch/email-ingest.js"
+      },
+      2: {
+        title: "Stage 1: Job Extraction (Mistral Small)",
+        desc: "Extract job details mentioned in the email body. The prompt strictly limits extraction to R&D/Innovation leadership context.",
+        rules: "Target sectors: Manufacturing, Auto, Aerospace, Pharma, MedTech, GCCs\nTarget roles: R&D, Product Strategy, AI Platforms, Innovation\nExcluded: Pricing, Sales, Legal, Patents, Operations\nOutput format: {\"listings\": [{\"company\": \"\", \"position\": \"\", \"location\": \"\"}]}",
+        api: "Mistral API (mistral-small-latest)"
+      },
+      3: {
+        title: "Search & URL Prioritization (Serper)",
+        desc: "Performs exact quote searches. Results are scored and sorted, prioritizing direct sources over aggregators.",
+        rules: "Priority Order:\n- Rank 1: LinkedIn Job Posting (Score 100)\n- Rank 2: Naukri Posting (Score 90)\n- Rank 3: Indeed Posting (Score 80)\n- Rank 4: BeBee Posting (Score 70)\n- Rank 5: SimplyHired Posting (Score 60)\n- Rank 6: Company Careers/ATS/Official Page (Score 50)\n- Others: Deprioritized (Score 30)",
+        api: "Serper API (google.serper.dev)"
+      },
+      4: {
+        title: "Playwright Scraping & 7-Day Cache",
+        desc: "Navigate to the selected prioritized job URL using a Playwright headless browser to scrape raw description, title, and company. Check company cache first to prevent repeated queries.",
+        rules: "1. Persistent cache check: Look in company-cache.json. Expire any records older than 7 days.\n2. Fallback lookup: Search company on LinkedIn, parse employee count from meta description or body, store in cache with Unix timestamp.",
+        api: "company-cache.json / scraper.js"
+      },
+      5: {
+        title: "Stage 2: Job Evaluation & Scoring",
+        desc: "Evaluate the job description using Mistral AI. The LLM classifies the role into brackets to determine the base score. Programmatic overrides adjust the score based on case-insensitive keyword scans in the JD.",
+        rules: "Brackets:\n- 85-100: Head/VP/Director of Innovation/R&D/Product\n- 70-84: Sr Manager - Innovation\n- 55-69: Program/Project Manager\n- 40-54: Adjacent but relevant\n- 0-39: Reject\n\nProgrammatic Adjustments:\n- Boost +15: strategy, roadmap, product development, AI platform\n- Penalty -20: pricing, sales quota, legal compliance, account management",
+        api: "Mistral API (mistral-large-latest)"
+      },
+      6: {
+        title: "Threshold Decisions & Qualification",
+        desc: "Check employee count and score programmatically. Qualified leads are stored in PostgreSQL; unqualified ones log detailed rejection reasons.",
+        rules: "Rules:\n- PASS if LinkedIn employee count >= 500\n- REJECT if employee count < 500\n- REJECT if company not found on LinkedIn (unless final score >= 80)\n- PASS if Final Score >= 50\n- Log format: [REJECT] [Reason] Score X/100, Employees Y",
+        api: "POST /api/ingest / PostgreSQL"
+      },
+      7: {
+        title: "CRM Conversion & Deals Board Sync",
+        desc: "Converts qualified leads into CRM entities: Account, Contact, and Deal record. Deal automatically enters the Deals Pipeline Kanban Board at stage 'lead' (20% probability).",
+        rules: "1. Auto-create Account & Contact if not already existing\n2. Create Deal record with default $15,000 value and stage = 'lead'\n3. Generate initial follow-up task scheduled for +2 days",
+        api: "POST /api/leads/:id/convert / POST /api/deals"
+      },
+      8: {
+        title: "Outreach Sequence Engine & Reply Scanner",
+        desc: "Dispatches pre-filled, editable Day 0 email. Automatically advances Deal stage to 'contacted' (40% probability). Automatically schedules Day 3 (Follow-up #1) and Day 7 (Follow-up #2) emails, and scans inboxes hourly for customer replies.",
+        rules: "1. Day 0 Email: Pre-filled with AI outreach text, editable before sending\n2. Pipeline Sync: Auto-move Deal card from 'Lead 20%' to 'Contacted 40%'\n3. Auto Sequence: Day 3 Follow-up #1 & Day 7 Follow-up #2\n4. Reply Scanner: Hourly IMAP scan to detect replies & mark status = 'replied'",
+        api: "POST /api/outreach / POST /api/outreach/:id/send-followup / POST /api/outreach/check-replies"
+      }
+    };
+
+    let simInterval = null;
+    let currentStep = 0;
+    let activeStepNum = 1;
+
+    function showDetails(stepNum) {
+      activeStepNum = stepNum;
+      document.getElementById("welcome-detail").classList.add("hidden");
+      const content = document.getElementById("content-detail");
+      content.classList.remove("hidden");
+      
+      for (let i = 1; i <= 8; i++) {
+        const card = document.getElementById(`step-${i}`);
+        if (card) {
+          if (i === stepNum) {
+            card.classList.add("active-step");
+          } else {
+            card.classList.remove("active-step");
+          }
+        }
+      }
+
+      const data = stepsData[stepNum];
+      document.getElementById("detail-num").textContent = stepNum < 10 ? `0${stepNum}` : stepNum;
+      document.getElementById("detail-title").textContent = data.title;
+      document.getElementById("detail-desc").textContent = data.desc;
+      document.getElementById("detail-rules").textContent = data.rules;
+      document.getElementById("detail-api").textContent = data.api;
+
+      document.getElementById("btnPrevStep").disabled = (stepNum === 1);
+      document.getElementById("btnNextStep").disabled = (stepNum === 8);
+      document.getElementById("btnPrevStep").classList.toggle("opacity-40", stepNum === 1);
+      document.getElementById("btnNextStep").classList.toggle("opacity-40", stepNum === 8);
+    }
+
+    function navigateStep(direction) {
+      let nextStep = activeStepNum + direction;
+      if (nextStep >= 1 && nextStep <= 8) {
+        showDetails(nextStep);
+      }
+    }
+
+    function toggleSimulation() {
+      const btn = document.getElementById("btnSimulate");
+      const icon = document.getElementById("simIcon");
+      const text = document.getElementById("simText");
+
+      if (simInterval) {
+        clearInterval(simInterval);
+        simInterval = null;
+        icon.className = "bi bi-play-fill text-sm";
+        text.textContent = "Run Flow Simulation";
+        btn.classList.remove("bg-amber-600", "hover:bg-amber-700");
+        btn.classList.add("bg-[#2563EB]", "hover:bg-[#1D4ED8]");
+        for (let i = 1; i <= 7; i++) {
+          const dot = document.getElementById(`flow-dot-${i}`);
+          if (dot) dot.classList.add("hidden");
+        }
+      } else {
+        currentStep = 1;
+        showDetails(currentStep);
+        icon.className = "bi bi-pause-fill text-sm";
+        text.textContent = "Pause Simulation";
+        btn.classList.remove("bg-[#2563EB]", "hover:bg-[#1D4ED8]");
+        btn.classList.add("bg-amber-600", "hover:bg-amber-700");
+
+        simInterval = setInterval(() => {
+          for (let i = 1; i <= 7; i++) {
+            const dot = document.getElementById(`flow-dot-${i}`);
+            if (dot) dot.classList.add("hidden");
+          }
+
+          if (currentStep <= 7) {
+            const currentDot = document.getElementById(`flow-dot-${currentStep}`);
+            if (currentDot) currentDot.classList.remove("hidden");
+          }
+
+          currentStep++;
+          if (currentStep > 8) {
+            currentStep = 1;
+          }
+          showDetails(currentStep);
+        }, 3200);
+      }
+    }
+  </script>
+</body>
+</html>

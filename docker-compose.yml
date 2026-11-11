@@ -1,0 +1,30 @@
+services:
+  crm:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: salesforge-crm
+    restart: unless-stopped
+    ports:
+      - "${PORT:-3000}:3000"
+    env_file:
+      - .env
+    volumes:
+      # Persist Baileys WhatsApp pairing session across container restarts
+      - whatsapp_session:/app/baileys_auth_info
+      # Optional: mount local .env if dynamic hot-updates are needed
+
+      - ./.env:/app/.env:ro
+    environment:
+      - PORT=3000
+      - NODE_ENV=production
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  whatsapp_session:
+    driver: local

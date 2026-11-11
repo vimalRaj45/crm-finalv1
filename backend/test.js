@@ -67,13 +67,43 @@ function cleanUrl(rawUrl) {
   return url;
 }
 
+// Helper to extract LinkedIn Job ID from standard job URLs
+function extractLinkedInJobId(url) {
+  if (!url) return null;
+  const viewMatch = url.match(/\/jobs\/view\/(\d+)/);
+  if (viewMatch) return viewMatch[1];
+  const paramMatch = url.match(/currentJobId=(\d+)/);
+  if (paramMatch) return paramMatch[1];
+  return null;
+}
+
+// Normalizes URLs for accurate deduplication checks
+function normalizeJobUrl(url) {
+  if (!url) return "";
+  try {
+    const parsed = new URL(url);
+    // If it's a LinkedIn job URL, normalize to a standard Job ID-based string
+    const jobId = extractLinkedInJobId(url);
+    if (jobId) {
+      return `linkedin-job-${jobId}`;
+    }
+    // Remove query params and trailing slashes for other job portals
+    let normalized = parsed.origin + parsed.pathname.replace(/\/$/, "");
+    return normalized.toLowerCase();
+  } catch (e) {
+    return url.toLowerCase().trim();
+  }
+}
+
+
 // Extract potential company keywords from the query to match official domains
 function getCompanyKeywords(query) {
   const stopWords = new Set([
     "associate", "director", "manager", "lead", "engineer", "developer", "specialist", "analyst", "co",
     "process", "innovation", "automation", "dharwad", "karnataka", "india", "bebee", "linkedin", "jobs",
     "job", "career", "careers", "internship", "via", "of", "and", "in", "for", "the", "a", "an", "with",
-    "&", "enterprise", "inc", "ltd", "group", "solutions", "services", "global", "systems", "technologies"
+    "&", "enterprise", "inc", "ltd", "group", "solutions", "services", "global", "systems", "technologies",
+    "austin", "bengaluru", "bangalore", "pune", "mumbai", "delhi", "chennai", "hyderabad", "r", "d"
   ]);
 
   const words = query.toLowerCase()
@@ -86,7 +116,11 @@ function getCompanyKeywords(query) {
 
 // Perform Google search using Serper API
 async function searchSerperAPI(query) {
-  const apiKey = process.env.SERPER_API_KEY || "6e3394cf8d659c84441b42a3e2b7ef8f51df5c14";
+  const apiKey = process.env.SERPER_API_KEY;
+  if (!apiKey) {
+    console.warn(`[test.js Serper Search] SERPER_API_KEY is not set.`);
+    return [];
+  }
   const searchUrl = `https://google.serper.dev/search?q=${encodeURIComponent(query)}&apiKey=${apiKey}`;
   console.log(`[test.js Serper Search] Querying Serper.dev API...`);
   
@@ -208,6 +242,11 @@ function selectBestUrl(urls, query) {
         return { url, score: 0, reason: "Excluded: Non-job SimplyHired URL" };
       }
     }
+    // Rank 5: BeBee
+    else if (lowerUrl.includes("bebee.com")) {
+      score = 6;
+      reason = "Preference 1: BeBee Job Posting";
+    }
 
 
     return { url, score, reason };
@@ -303,6 +342,26 @@ async function run() {
       .filter(q => q.length > 0);
   }
 
+  const existingJobKeys = new Set();
+  const dbFiles = ["jobs-db.json", "job.json"];
+  for (const dbFile of dbFiles) {
+    if (fs.existsSync(dbFile)) {
+      try {
+        const content = fs.readFileSync(dbFile, "utf8");
+        const items = JSON.parse(content);
+        if (Array.isArray(items)) {
+          items.forEach(item => {
+            if (item.url) existingJobKeys.add(normalizeJobUrl(item.url));
+            if (item.scraped_url) existingJobKeys.add(normalizeJobUrl(item.scraped_url));
+          });
+        }
+      } catch (err) {
+        console.warn(`Warning: Could not read or parse ${dbFile} for deduplication keys:`, err.message);
+      }
+    }
+  }
+  console.log(`Loaded ${existingJobKeys.size} duplicate keys for job deduplication.`);
+
   console.log(`\n==================================================`);
   console.log(`Starting Batch Processing: ${queries.length} queries`);
   console.log(`==================================================\n`);
@@ -352,14 +411,41 @@ async function run() {
       }
 
       if (selectedUrl) {
+        const jobKey = normalizeJobUrl(selectedUrl);
+        if (existingJobKeys.has(jobKey)) {
+          console.log(`[Duplicate Job] Job with key "${jobKey}" (URL: ${selectedUrl}) has already been processed. Skipping scraping.\n`);
+          successCount++;
+          continue;
+        }
+
         console.log(`\nSelected URL: ${selectedUrl}`);
         console.log(`Reason:       ${selectedReason}`);
         console.log(`Calling Scraper Engine...\n`);
 
         const jobDetails = await runScraper(selectedUrl);
         if (jobDetails) {
+          // Check for redirect mismatch: if none of the query company keywords match the scraped company, title, or description
+          const companyKeywords = getCompanyKeywords(query);
+          const scrapedCompanyNormalized = (jobDetails.company || "").toLowerCase().replace(/[^\w]/g, "");
+          const scrapedTitleNormalized = (jobDetails.title || "").toLowerCase().replace(/[^\w]/g, "");
+          const scrapedDescNormalized = (jobDetails.description || "").toLowerCase().replace(/[^\w]/g, "");
+
+          const hasKeyword = companyKeywords.some(keyword => {
+            const normalizedKeyword = keyword.toLowerCase().replace(/[^\w]/g, "");
+            return scrapedCompanyNormalized.includes(normalizedKeyword) ||
+                   scrapedTitleNormalized.includes(normalizedKeyword) ||
+                   scrapedDescNormalized.includes(normalizedKeyword);
+          });
+
+          if (companyKeywords.length > 0 && !hasKeyword) {
+            console.warn(`[test.js] Skipping redirect mismatch. Scraped job at "${jobDetails.company}" is not related to query keywords: [${companyKeywords.join(", ")}].`);
+            failCount++;
+            continue;
+          }
+
           console.log(`Successfully scraped: "${jobDetails.title}" at "${jobDetails.company}"`);
           saveJobToDb(jobDetails);
+          existingJobKeys.add(jobKey);
           successCount++;
         } else {
           console.log(`Failed to extract job details from: ${selectedUrl}`);

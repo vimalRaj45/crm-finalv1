@@ -1,0 +1,17 @@
+{
+  "short_name": "Salesforge",
+  "name": "Salesforge System Portal",
+  "icons": [
+    {
+      "src": "/favicon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ],
+  "start_url": "/index.html",
+  "background_color": "#032D60",
+  "theme_color": "#032D60",
+  "display": "standalone",
+  "orientation": "portrait"
+}

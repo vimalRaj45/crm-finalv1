@@ -1,0 +1,12 @@
+node_modules
+npm-debug.log
+.env
+.git
+.gitignore
+.history
+.playwright-browsers
+backend/baileys_auth_info
+baileys_auth_info
+job-details.json
+service-account.json
+*.log

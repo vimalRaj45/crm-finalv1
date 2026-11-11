@@ -1,0 +1,28 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Authenticating... | CRM Intelligence</title>
+  <script src="config.js"></script>
+  <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-slate-900 text-slate-100 min-h-screen flex items-center justify-center p-4 font-sans">
+  <div class="bg-slate-800/80 backdrop-blur-md p-8 rounded-2xl border border-slate-700/80 max-w-sm w-full text-center shadow-2xl">
+    <div class="w-12 h-12 border-4 border-blue-500 border-t-transparent rounded-full animate-spin mx-auto mb-5"></div>
+    <h2 class="text-lg font-bold text-white">Completing Google Authentication</h2>
+    <p class="text-xs text-slate-400 mt-2 leading-relaxed">Connecting your session with your Lead CRM Backend Server...</p>
+  </div>
+
+  <script>
+    (function() {
+      const params = window.location.search;
+      const isLocal = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1';
+      const baseUrl = isLocal ? "" : (((window.ENV && window.ENV.API_BASE_URL) || localStorage.getItem("CRM_API_BASE_URL") || "").replace(/\/+$/, ""));
+      
+      // Forward Google OAuth callback parameters to the active backend server
+      window.location.href = `${baseUrl}/api/email/oauth-callback${params}`;
+    })();
+  </script>
+</body>
+</html>

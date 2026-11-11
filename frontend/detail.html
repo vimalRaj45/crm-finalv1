@@ -1,0 +1,1243 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <!-- Environment Config -->
+  <script src="config.js"></script>
+  <!-- Auth Interceptor -->
+  <script>
+    (function() {
+      // Intercept token from query parameter first
+      const params = new URLSearchParams(window.location.search);
+      const queryToken = params.get("token");
+      if (queryToken) {
+        localStorage.setItem("CRM_auth_token", queryToken);
+        // clean up URL query params
+        params.delete("token");
+        const newSearch = params.toString();
+        const cleanUrl = window.location.pathname + (newSearch ? "?" + newSearch : "");
+        window.history.replaceState({}, document.title, cleanUrl);
+      }
+
+      const token = localStorage.getItem("CRM_auth_token");
+      if (!token && !window.location.pathname.includes("login.html")) {
+        window.location.href = "login.html";
+        return;
+      }
+      
+      const originalFetch = window.fetch;
+      window.fetch = async function(...args) {
+        let [resource, config] = args;
+        const currentToken = localStorage.getItem("CRM_auth_token");
+        const baseUrl = ((window.ENV && window.ENV.API_BASE_URL) || localStorage.getItem("CRM_API_BASE_URL") || "").replace(/\/+$/, "");
+
+        if (typeof resource === 'string' && resource.startsWith("/api/")) {
+          resource = `${baseUrl}${resource}`;
+          config = config || {};
+          config.headers = config.headers || {};
+          config.headers["Authorization"] = `Bearer ${currentToken}`;
+        }
+        const response = await originalFetch(resource, config);
+        if (response.status === 401 && !window.location.pathname.includes("login.html")) {
+          localStorage.removeItem("CRM_auth_token");
+          window.location.href = "/login.html";
+        }
+        return response;
+      };
+      
+      const originalEventSource = window.EventSource;
+      window.EventSource = function(url, ...rest) {
+        const currentToken = localStorage.getItem("CRM_auth_token");
+        const baseUrl = (localStorage.getItem("CRM_API_BASE_URL") || "").replace(/\/+$/, "");
+        const targetUrl = url.startsWith("/api/") ? `${baseUrl}${url}` : url;
+        const sseUrl = targetUrl + (targetUrl.includes("?") ? "&" : "?") + "token=" + currentToken;
+        return new originalEventSource(sseUrl, ...rest);
+      };
+    })();
+  </script>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lead Details | Salesforge System</title>
+  <link rel="icon" type="image/svg+xml" href="/favicon.svg">
+  
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;500&family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  
+  <!-- Tailwind CSS Play CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Bootstrap Icons CDN -->
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.min.css">
+  
+  <!-- AOS Animate On Scroll CSS CDN -->
+  <link href="https://unpkg.com/aos@2.3.1/dist/aos.css" rel="stylesheet">
+
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              bg: '#f8fafc',
+              card: '#ffffff',
+              navy: '#0f172a',
+              border: '#e2e8f0',
+              blue: '#2563eb',
+              blueHover: '#1d4ed8',
+              cyan: '#0284c7',
+              emerald: '#059669',
+              amber: '#d97706',
+              red: '#dc2626'
+            },
+            sf: {
+              blue: '#0176D3',
+              blueHover: '#014486',
+              cloudBlue: '#00A1E0',
+              navy: '#032D60',
+              navyDark: '#001639',
+              pageBg: '#F3F3F3',
+              border: '#DDDBDA',
+              textMain: '#181818',
+              textMuted: '#514F4D',
+              success: '#2E844A',
+              warning: '#FE9339',
+              danger: '#BA0517'
+            }
+          },
+          fontFamily: {
+            sans: ['Outfit', 'sans-serif'],
+            inter: ['Inter', 'sans-serif'],
+            mono: ['Fira Code', 'monospace']
+          }
+        }
+      }
+    }
+  </script>
+
+  <style type="text/tailwindcss">
+    @layer base {
+      body {
+        @apply bg-[#F6F8FB] text-[#172033] font-sans min-h-screen selection:bg-blue-100 selection:text-blue-700;
+        overflow-x: hidden;
+      }
+    }
+
+    .scrollbar-none::-webkit-scrollbar { display: none; }
+    .scrollbar-none { -ms-overflow-style: none; scrollbar-width: none; }
+
+    /* Light Claymorphism Utility Tokens */
+    .clay-card {
+      background: #FFFFFF;
+      border-radius: 18px;
+      border: 1px solid #E2E8F0;
+      box-shadow: 0 8px 24px rgba(15, 23, 42, 0.06), inset 0 1px 0 rgba(255, 255, 255, 0.8);
+      transition: all 180ms ease;
+    }
+    .clay-card:hover {
+      box-shadow: 0 12px 30px rgba(15, 23, 42, 0.09), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+    }
+
+    /* 9-Dot Waffle Grid */
+    .sf-waffle {
+      display: grid;
+      grid-template-columns: repeat(3, 4px);
+      gap: 2.5px;
+      width: 17px;
+      height: 17px;
+    }
+    .sf-waffle span {
+      width: 4px;
+      height: 4px;
+      background-color: #64748B;
+      border-radius: 1px;
+    }
+
+    /* Pipeline Stage Chevrons */
+    .sf-path {
+      display: flex;
+      align-items: center;
+      overflow-x: auto;
+      border-radius: 12px;
+      background: #FFFFFF;
+      border: 1px solid #E2E8F0;
+      padding: 6px;
+      box-shadow: inset 0 2px 4px rgba(15, 23, 42, 0.03);
+    }
+    .sf-path-item {
+      position: relative;
+      flex: 1;
+      text-align: center;
+      padding: 8px 12px 8px 20px;
+      font-size: 0.7rem;
+      font-weight: 700;
+      color: #64748B;
+      background: #F1F5F9;
+      clip-path: polygon(0% 0%, calc(100% - 10px) 0%, 100% 50%, calc(100% - 10px) 100%, 0% 100%, 10px 50%);
+      margin-right: -6px;
+      cursor: pointer;
+      white-space: nowrap;
+      transition: all 180ms ease;
+    }
+    .sf-path-item:first-child {
+      clip-path: polygon(0% 0%, calc(100% - 10px) 0%, 100% 50%, calc(100% - 10px) 100%, 0% 100%);
+      padding-left: 12px;
+    }
+    .sf-path-item.active { background: #2563EB; color: #FFFFFF; }
+    .sf-path-item.complete { background: #10B981; color: #FFFFFF; }
+
+    @media (max-width: 640px) {
+      .sf-path {
+        flex-direction: row;
+        overflow-x: auto;
+        white-space: nowrap;
+        gap: 0px;
+        background: #FFFFFF;
+        border: 1px solid #E2E8F0;
+        padding: 4px;
+        -ms-overflow-style: none;
+        scrollbar-width: none;
+      }
+      .sf-path::-webkit-scrollbar {
+        display: none;
+      }
+      .sf-path-item {
+        clip-path: polygon(0% 0%, calc(100% - 10px) 0%, 100% 50%, calc(100% - 10px) 100%, 0% 100%, 10px 50%) !important;
+        margin-right: -6px !important;
+        padding: 8px 10px 8px 16px !important;
+        font-size: 0.65rem !important;
+        flex: 1 0 auto !important;
+        text-align: center !important;
+        display: block !important;
+      }
+      .sf-path-item:first-child {
+        clip-path: polygon(0% 0%, calc(100% - 10px) 0%, 100% 50%, calc(100% - 10px) 100%, 0% 100%) !important;
+        padding-left: 10px !important;
+      }
+      .sf-path-item::before {
+        display: none !important;
+      }
+    }
+
+    /* Pill Badges */
+    .sf-badge {
+      display: inline-flex;
+      align-items: center;
+      padding: 0.125rem 0.625rem;
+      border-radius: 9999px;
+      font-size: 0.75rem;
+      font-weight: 600;
+    }
+    .sf-badge-new { background-color: #EFF6FF; color: #2563EB; border: 1px solid #DBEAFE; }
+    .sf-badge-working { background-color: #FFFBEB; color: #D97706; border: 1px solid #FDE68A; }
+    .sf-badge-contacted { background-color: #ECFDF5; color: #10B981; border: 1px solid #D1FAE5; }
+
+    /* Custom scrollbar */
+    ::-webkit-scrollbar {
+      width: 5px;
+      height: 5px;
+    }
+    ::-webkit-scrollbar-thumb {
+      @apply bg-slate-300 rounded-full transition-colors;
+    }
+    ::-webkit-scrollbar-thumb:hover {
+      @apply bg-slate-400;
+    }
+  </style>
+</head>
+<body class="h-screen flex flex-col bg-[#F6F8FB] overflow-hidden">
+
+  <!-- Salesforce Top Global Header -->
+  <header class="bg-[#FFFFFF] text-[#172033] h-14 px-5 flex items-center justify-between border-b border-[#E2E8F0] flex-shrink-0 font-sans w-full" style="box-shadow: 0 4px 16px rgba(15, 23, 42, 0.04), inset 0 -1px 0 #E2E8F0;">
+    <!-- Left: Logo & Launcher -->
+    <div class="flex items-center space-x-3">
+      <button class="p-2 rounded-xl hover:bg-[#F1F5F9] flex-shrink-0 transition-colors" title="App Launcher">
+        <div class="sf-waffle">
+          <span></span><span></span><span></span>
+          <span></span><span></span><span></span>
+          <span></span><span></span><span></span>
+        </div>
+      </button>
+      <div class="flex items-center gap-2">
+        <svg class="w-6 h-5 text-[#2563EB] fill-current" viewBox="0 0 24 16" xmlns="http://www.w3.org/2000/svg">
+          <path d="M19.4 6.7C19.0 2.9 15.8 0 12.0 0C9.1 0 6.6 1.7 5.4 4.2C2.4 4.5 0 7.0 0 10.1C0 13.4 2.7 16 6.0 16H19.0C21.8 16 24 13.8 24 11.0C24 8.5 21.9 6.8 19.4 6.7Z" />
+        </svg>
+        <span class="font-extrabold text-lg tracking-tight text-[#172033] font-sans">salesforge<span class="text-blue-600"> system</span></span>
+      </div>
+    </div>
+
+    <!-- Center text -->
+    <div class="hidden sm:block text-xs font-bold text-[#64748B] truncate font-sans">Lead Intelligence Detail Sheet</div>
+
+    <!-- Right Actions -->
+    <div>
+      <button onclick="window.close()" class="px-4 py-2 bg-[#FFFFFF] hover:bg-[#F8FAFC] border border-[#E2E8F0] text-[#64748B] rounded-xl text-xs font-semibold flex items-center gap-1.5 transition-all font-sans shadow-sm">
+        <i class="bi bi-x-lg"></i>
+        <span class="hidden sm:inline">Close Window</span>
+      </button>
+    </div>
+  </header>
+
+  <!-- Salesforce Progress Path Chevrons Section -->
+  <div id="sfPathContainer" class="bg-white border-b border-[#E2E8F0] px-4 md:px-8 py-3 z-40 w-full hidden font-sans flex-shrink-0" style="box-shadow: 0 2px 8px rgba(15, 23, 42, 0.02);">
+    <div class="max-w-[1400px] mx-auto">
+      <div class="sf-path" id="leadProgressPath">
+        <div class="sf-path-item active" id="path_ingested">1. Ingested</div>
+        <div class="sf-path-item" id="path_outreach">2. Outreach Sent</div>
+        <div class="sf-path-item" id="path_replied">3. Replied</div>
+        <div class="sf-path-item" id="path_converted">4. Converted to CRM</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scrollable content area with mobile safe padding -->
+  <div id="pageScrollArea" class="flex-1 overflow-y-auto bg-[#F6F8FB] pb-24 md:pb-6">
+
+  <!-- Salesforce-style Detail Page Loading Skeleton -->
+  <div id="detailSkeleton" class="max-w-[1400px] w-full mx-auto py-6 px-4 md:px-8 space-y-6 animate-pulse">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+      <!-- Left Column Skeleton -->
+      <div class="lg:col-span-5 space-y-6">
+        <div class="bg-white border border-[#DDDBDA] rounded-xl p-6 space-y-5">
+          <div class="h-6 bg-slate-200 rounded w-3/4"></div>
+          <div class="h-4 bg-slate-150 rounded w-1/2"></div>
+          <div class="h-10 bg-slate-100 rounded w-full"></div>
+          <div class="grid grid-cols-2 gap-4">
+            <div class="h-8 bg-slate-100 rounded"></div>
+            <div class="h-8 bg-slate-100 rounded"></div>
+          </div>
+        </div>
+      </div>
+      <!-- Right Column Skeleton -->
+      <div class="lg:col-span-7 space-y-6">
+        <div class="bg-white border border-[#DDDBDA] rounded-xl p-6 space-y-5">
+          <div class="h-5 bg-slate-200 rounded w-1/3"></div>
+          <div class="h-32 bg-slate-100 rounded w-full"></div>
+          <div class="h-32 bg-slate-105 rounded w-full"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- CONTENT GRID CONTAINER -->
+  <main id="mainContent" class="max-w-[1400px] w-full mx-auto py-6 px-4 md:px-8 space-y-6 hidden">
+    <div class="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
+    
+    <!-- LEFT COLUMN: FIT & COMPANY DETAILS -->
+    <div class="lg:col-span-5 space-y-6" data-aos="fade-right">
+      
+      <!-- Company Card -->
+      <div class="glass-card p-6 space-y-5">
+        <div class="flex items-start justify-between">
+          <div class="space-y-1">
+            <span class="text-[10px] uppercase font-bold tracking-wider text-slate-400">Target Lead</span>
+            <h2 id="leadCompany" class="font-outfit font-extrabold text-2xl text-slate-900 leading-tight">-</h2>
+            <p id="leadPosition" class="text-sm font-semibold text-brand-blue">-</p>
+          </div>
+          <!-- Score Badge -->
+          <div id="leadScore" class="w-12 h-12 rounded-full flex items-center justify-center font-bold font-outfit text-sm border-2 shadow-sm">-</div>
+        </div>
+
+        <div class="border-t border-slate-100 pt-4 grid grid-cols-2 gap-4">
+          <div class="space-y-0.5">
+            <span class="text-[9px] uppercase font-bold text-slate-400">Domain</span>
+            <span id="leadDomain" class="text-xs text-slate-800 font-medium block truncate">-</span>
+          </div>
+          <div class="space-y-0.5">
+            <span class="text-[9px] uppercase font-bold text-slate-400">Headcount</span>
+            <span id="leadEmployees" class="text-xs text-slate-800 font-medium block truncate">-</span>
+          </div>
+          <div class="space-y-0.5">
+            <span class="text-[9px] uppercase font-bold text-slate-400">Contact Email</span>
+            <span id="leadEmail" class="text-xs text-slate-800 font-medium block truncate">-</span>
+          </div>
+          <div class="space-y-0.5">
+            <span class="text-[9px] uppercase font-bold text-slate-400">Log Date</span>
+            <span id="leadPosted" class="text-xs text-slate-800 font-medium block truncate">-</span>
+          </div>
+        </div>
+
+        <div class="border-t border-slate-100 pt-4 space-y-2">
+          <span class="text-[9px] uppercase font-bold text-slate-400 block">External Profiles</span>
+          <div id="linkContainer" class="flex flex-wrap gap-2">
+            <!-- Link buttons -->
+          </div>
+        </div>
+      </div>
+
+      <!-- Fit Evaluation Box -->
+      <div class="glass-card p-6 space-y-3">
+        <h3 class="text-xs uppercase font-extrabold tracking-wider text-brand-blue flex items-center gap-1.5" id="qualificationTitle">
+          <i class="bi bi-patch-check-fill text-brand-blue" id="qualificationIcon"></i>
+          <span id="qualificationLabel">Qualification Match Reason</span>
+        </h3>
+        <p id="leadFitReason" class="text-xs text-slate-700 leading-relaxed font-medium bg-blue-50/50 border-l-4 border-brand-blue rounded-r-xl p-3.5">-</p>
+      </div>
+
+      <!-- Outreach Message Box -->
+      <div id="outreachBox" class="glass-card p-6 space-y-3 hidden">
+        <h3 class="text-xs uppercase font-extrabold tracking-wider text-brand-emerald flex items-center gap-1.5">
+          <i class="bi bi-send-fill text-brand-emerald"></i>
+          <span>Personalized AI Outreach</span>
+        </h3>
+        <p id="leadOutreach" class="text-xs text-slate-700 leading-relaxed font-medium bg-emerald-50/50 border-l-4 border-brand-emerald rounded-r-xl p-3.5 whitespace-pre-wrap">-</p>
+      </div>
+
+      <!-- CRM Operations Panel -->
+      <div id="crmOpsPanel" class="glass-card p-6 space-y-4 font-sans">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-purple-600 flex items-center gap-1.5">
+            <i class="bi bi-building"></i>
+            <span>CRM Operations</span>
+          </h3>
+          <span id="crmStatusBadge" class="hidden text-[10px] bg-purple-50 text-purple-700 font-bold px-2 py-0.5 rounded-full border border-purple-100">Converted</span>
+        </div>
+        <div class="flex flex-col sm:flex-row gap-2">
+          <button id="btnDetailConvert" class="flex-1 py-2.5 bg-purple-50 hover:bg-purple-600 hover:text-white text-purple-700 border border-purple-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm">
+            <i class="bi bi-arrow-right-circle-fill"></i>
+            <span>Convert Lead to CRM</span>
+          </button>
+          <button id="btnDetailAddTask" class="flex-1 py-2.5 bg-rose-50 hover:bg-rose-600 hover:text-white text-rose-700 border border-rose-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all shadow-sm">
+            <i class="bi bi-calendar-plus"></i>
+            <span>Schedule Follow-up Task</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Outreach Panel -->
+      <div id="outreachPanel" class="glass-card p-6 space-y-4">
+        <div class="flex items-center justify-between">
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-brand-emerald flex items-center gap-1.5">
+            <i class="bi bi-send-fill text-brand-emerald"></i>
+            <span>Start Outreach</span>
+          </h3>
+          <span id="outreachStatusBadge" class="hidden text-[10px] font-bold px-2.5 py-1 rounded-full"></span>
+        </div>
+
+        <!-- Existing outreach record info -->
+        <div id="outreachExistingInfo" class="hidden bg-emerald-50 border border-emerald-200 rounded-xl p-3 text-xs space-y-1">
+          <p class="font-semibold text-emerald-800"><i class="bi bi-check-circle-fill mr-1"></i>Outreach already active</p>
+          <p class="text-slate-600"><span class="font-medium">Contact:</span> <span id="existingContactName">-</span></p>
+          <p class="text-slate-600"><span class="font-medium">Email:</span> <span id="existingContactEmail">-</span></p>
+          <p class="text-slate-600"><span class="font-medium">Sent:</span> <span id="existingSentAt">-</span></p>
+          <div class="flex flex-wrap gap-2 pt-1">
+            <button id="btnSendFollowup" class="px-3 py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-[10px] font-semibold rounded-lg flex items-center gap-1 transition-all shadow-sm" title="Edit and send pre-filled follow-up email">
+              <i class="bi bi-send-plus-fill"></i> Edit & Send Follow-up
+            </button>
+            <button id="btnMarkReplied" class="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-700 text-white text-[10px] font-semibold rounded-lg flex items-center gap-1 transition-all shadow-sm">
+              <i class="bi bi-reply-fill"></i> Mark Replied
+            </button>
+            <button id="btnDeleteOutreach" class="px-3 py-1.5 bg-white hover:bg-red-50 text-red-500 border border-red-200 text-[10px] font-semibold rounded-lg flex items-center gap-1 transition-all shadow-sm">
+              <i class="bi bi-trash"></i> Delete
+            </button>
+          </div>
+        </div>
+
+        <!-- New outreach form -->
+        <div id="outreachForm" class="space-y-3">
+          <div class="space-y-1">
+            <label class="text-[9px] font-bold text-slate-500 uppercase block">Contact Name</label>
+            <input type="text" id="outreachContactName" placeholder="e.g. John Smith" class="w-full bg-white border border-slate-200 focus:border-brand-emerald focus:ring-2 focus:ring-brand-emerald/10 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none transition-all placeholder:text-slate-400">
+          </div>
+          <div class="space-y-1">
+            <label class="text-[9px] font-bold text-slate-500 uppercase block">Contact Email *</label>
+            <input type="email" id="outreachContactEmail" placeholder="e.g. john@company.com" class="w-full bg-white border border-slate-200 focus:border-brand-emerald focus:ring-2 focus:ring-brand-emerald/10 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none transition-all placeholder:text-slate-400">
+          </div>
+          <div class="space-y-1">
+            <label class="text-[9px] font-bold text-slate-500 uppercase block">Email Subject *</label>
+            <input type="text" id="outreachSubject" class="w-full bg-white border border-slate-200 focus:border-brand-emerald focus:ring-2 focus:ring-brand-emerald/10 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none transition-all">
+          </div>
+          <div class="space-y-1">
+            <label class="text-[9px] font-bold text-slate-500 uppercase block flex items-center gap-1">
+              Day 0 Email Body (Editable)
+              <span class="text-brand-emerald font-bold">✏️</span>
+            </label>
+            <textarea id="outreachBody" rows="6" class="w-full bg-white border border-slate-200 focus:border-brand-emerald focus:ring-2 focus:ring-brand-emerald/10 rounded-xl px-3 py-2 text-xs text-slate-800 outline-none resize-y transition-all leading-relaxed"></textarea>
+          </div>
+          <div class="flex gap-2">
+            <button id="btnSendOutreach" class="flex-1 py-2.5 bg-brand-emerald hover:bg-emerald-700 text-white font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all active:scale-[0.98] shadow-md shadow-emerald-500/10">
+              <i class="bi bi-send-fill"></i>
+              <span>Send Outreach</span>
+            </button>
+            <a id="btnPeopleLink" href="#" target="_blank" class="py-2.5 px-3 bg-blue-50 hover:bg-blue-100 text-brand-blue border border-blue-200 font-semibold text-xs rounded-xl flex items-center justify-center gap-1.5 transition-all" title="Find Contact on LinkedIn">
+              <i class="bi bi-linkedin"></i>
+              <span class="hidden sm:inline">People</span>
+            </a>
+          </div>
+          <p class="text-[9px] text-slate-400 text-center">Day 3 & Day 7 follow-ups send automatically. Reply detection runs hourly.</p>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- RIGHT COLUMN: FULL SCRAPED DESCRIPTION -->
+    <div class="lg:col-span-7 space-y-6 h-full" data-aos="fade-left">
+      <div class="glass-card p-6 flex flex-col gap-4">
+        <div class="flex items-center justify-between border-b border-slate-100 pb-3">
+          <h3 class="text-xs uppercase font-extrabold tracking-wider text-slate-900 flex items-center gap-1.5">
+            <i class="bi bi-body-text text-brand-blue"></i>
+            <span>Full Scraped Job Description</span>
+          </h3>
+          <a id="sourceBtn" href="#" target="_blank" class="px-3.5 py-1.5 bg-brand-cyan hover:bg-sky-600 text-white rounded-lg text-[10px] font-semibold flex items-center gap-1.5 shadow-md shadow-sky-500/10 transition-colors">
+            <i class="bi bi-box-arrow-up-right"></i>
+            <span>Open Source Posting</span>
+          </a>
+        </div>
+        <div id="leadJD" class="bg-slate-50 p-4 border border-slate-200 rounded-xl text-xs text-slate-650 leading-relaxed font-sans overflow-y-auto whitespace-pre-wrap max-h-[320px] lg:max-h-[640px]">
+          Loading job description...
+        </div>
+      </div>
+    </div>
+
+    </div>
+  </main>
+
+  <!-- ERROR / NOT FOUND STATE -->
+  <div id="errorState" class="hidden glass-card p-12 text-center text-slate-500 space-y-4 max-w-md mx-auto mt-12">
+    <i class="bi bi-exclamation-triangle-fill text-4xl text-brand-red"></i>
+    <h2 class="font-outfit font-bold text-lg text-slate-900">Lead Not Found</h2>
+    <p class="text-xs">The requested lead identifier is invalid or does not exist in the database.</p>
+    <button onclick="window.close()" class="px-4 py-2 bg-slate-100 border border-slate-200 rounded-xl text-xs font-semibold">Close Window</button>
+  </div>
+
+  </div><!-- /pageScrollArea -->
+
+  <script>
+    function escapeHtml(str) {
+      if (!str) return "";
+      return str
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    async function loadLeadDetails() {
+      const urlParams = new URLSearchParams(window.location.search);
+      const leadId = urlParams.get('id');
+      const leadTypeParam = urlParams.get('type') || null;
+      
+      if (leadId === null || leadId === undefined || leadId === '') {
+        showError();
+        return;
+      }
+
+      document.getElementById("detailSkeleton").classList.remove("hidden");
+      document.getElementById("mainContent").classList.add("hidden");
+
+      try {
+        // Fetch the lead directly by ID (no need for type guessing)
+        const res = await fetch(`/api/leads/${leadId}`);
+        
+        if (!res.ok) {
+          showError();
+          return;
+        }
+        
+        const lead = await res.json();
+
+        if (!lead || !lead.id) {
+          showError();
+          return;
+        }
+
+        // Determine leadType from DB is_fit field if not provided in URL
+        const leadType = leadTypeParam || (lead.is_fit ? 'qualified' : 'unqualified');
+
+        // Title branding
+        document.title = `${lead.company_name} | ${lead.position || "Lead Details"} - Salesforge System`;
+
+        // Render fields
+        document.getElementById("leadCompany").textContent = lead.company_name || "Unknown Company";
+        document.getElementById("leadPosition").textContent = lead.position || "Unknown Role";
+        document.getElementById("leadDomain").textContent = lead.domain || "N/A";
+        document.getElementById("leadEmployees").textContent = lead.employees ? lead.employees.toLocaleString() + " Employees" : "N/A";
+        document.getElementById("leadEmail").textContent = lead.email || "N/A";
+        document.getElementById("leadPosted").textContent = lead.posted_date || new Date().toISOString().split('T')[0];
+        const leadSummaryEl = document.getElementById("leadSummary");
+        if (leadSummaryEl) leadSummaryEl.textContent = lead.role_summary || "No summary extracted.";
+        document.getElementById("leadJD").textContent = lead.scraped_description || "No scraped job description.";
+
+        // Outreach message
+        const outreachBox = document.getElementById("outreachBox");
+        const outreachEl = document.getElementById("leadOutreach");
+        if (lead.outreach_msg && leadType !== 'unqualified') {
+          if (outreachEl) outreachEl.textContent = lead.outreach_msg;
+          if (outreachBox) outreachBox.classList.remove("hidden");
+        } else {
+          if (outreachBox) outreachBox.classList.add("hidden");
+        }
+
+        // Dynamic styling for Qualification Box based on type
+        const qualTitle = document.getElementById("qualificationTitle");
+        const qualLabel = document.getElementById("qualificationLabel");
+        const qualIcon = document.getElementById("qualificationIcon");
+        const qualReasonBox = document.getElementById("leadFitReason");
+
+        if (leadType === 'unqualified') {
+          if (qualTitle) {
+            qualTitle.classList.remove("text-brand-blue");
+            qualTitle.classList.add("text-brand-red");
+          }
+          if (qualLabel) qualLabel.textContent = "Unqualified Reason";
+          if (qualIcon) {
+            qualIcon.className = "bi bi-x-circle-fill text-brand-red";
+          }
+          if (qualReasonBox) {
+            qualReasonBox.className = "text-xs text-slate-700 leading-relaxed font-medium bg-red-50/50 border-l-4 border-brand-red rounded-r-xl p-3.5";
+            qualReasonBox.textContent = lead.fit_reason || "Does not match criteria";
+          }
+        } else {
+          if (qualTitle) {
+            qualTitle.classList.remove("text-brand-red");
+            qualTitle.classList.add("text-brand-blue");
+          }
+          if (qualLabel) qualLabel.textContent = "Qualification Match Reason";
+          if (qualIcon) {
+            qualIcon.className = "bi bi-patch-check-fill text-brand-blue";
+          }
+          if (qualReasonBox) {
+            qualReasonBox.className = "text-xs text-slate-700 leading-relaxed font-medium bg-blue-50/50 border-l-4 border-brand-blue rounded-r-xl p-3.5";
+            qualReasonBox.textContent = lead.fit_reason || "Matches criteria";
+          }
+        }
+
+        // Score circle formatting
+        const scoreDiv = document.getElementById("leadScore");
+        scoreDiv.textContent = lead.score || "0";
+        if (lead.score >= 80) scoreDiv.className += " bg-emerald-50 text-brand-emerald border-emerald-200";
+        else if (lead.score >= 50) scoreDiv.className += " bg-amber-50 text-brand-amber border-amber-200";
+        else scoreDiv.className += " bg-red-50 text-brand-red border-red-200";
+
+        // Links Row
+        const linkContainer = document.getElementById("linkContainer");
+        linkContainer.innerHTML = "";
+        
+        if (lead.company_linkedin_page || lead.linkedin) {
+          linkContainer.innerHTML += `<a href="${lead.company_linkedin_page || lead.linkedin}" target="_blank" class="px-3.5 py-2 rounded-xl bg-blue-50 hover:bg-blue-100 border border-blue-200 text-brand-blue flex items-center gap-1.5 transition-all text-xs font-semibold"><i class="bi bi-linkedin"></i><span>Company LinkedIn</span></a>`;
+        }
+        if (lead.wikipedia) {
+          linkContainer.innerHTML += `<a href="${lead.wikipedia}" target="_blank" class="px-3.5 py-2 rounded-xl bg-slate-100 hover:bg-slate-200 border border-slate-200 text-slate-700 flex items-center gap-1.5 transition-all text-xs font-semibold"><i class="bi bi-wikipedia"></i><span>Wikipedia</span></a>`;
+        }
+        if (lead.domain) {
+          linkContainer.innerHTML += `<a href="https://${lead.domain}" target="_blank" class="px-3.5 py-2 rounded-xl bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-brand-emerald flex items-center gap-1.5 transition-all text-xs font-semibold"><i class="bi bi-globe"></i><span>Official Website</span></a>`;
+        }
+        if (linkContainer.innerHTML === "") {
+          linkContainer.innerHTML = `<span class="text-slate-400 text-xs">No profile links available</span>`;
+        }
+
+        // Source posting button
+        const sourceBtn = document.getElementById("sourceBtn");
+        if (lead.scraped_url || lead.source) {
+          sourceBtn.href = lead.scraped_url || lead.source;
+          sourceBtn.classList.remove("hidden");
+        } else {
+          sourceBtn.classList.add("hidden");
+        }
+
+        // Load outreach panel (only for qualified leads)
+        if (leadType !== "unqualified") {
+          lead.db_id = lead.id; // real database id from API
+          await loadOutreachPanel(lead);
+        } else {
+          const panel = document.getElementById("outreachPanel");
+          if (panel) panel.classList.add("hidden");
+        }
+
+        // Check if there is an associated deal
+        let associatedDeal = null;
+        try {
+          const dealsRes = await fetch("/api/deals");
+          if (dealsRes.ok) {
+            const deals = await dealsRes.json();
+            associatedDeal = deals.find(d => String(d.lead_id) === String(leadId));
+          }
+        } catch (e) {
+          console.error("Failed to load associated deal", e);
+        }
+
+        // Render progress path chevrons
+        const pathContainer = document.getElementById("sfPathContainer");
+        const pathIngested = document.getElementById("path_ingested");
+        const pathOutreach = document.getElementById("path_outreach");
+        const pathReplied = document.getElementById("path_replied");
+        const pathConverted = document.getElementById("path_converted");
+
+        if (leadType === 'unqualified') {
+          pathContainer.classList.add("hidden");
+        } else {
+          pathContainer.classList.remove("hidden");
+          
+          // Reset styles to default sf-path-item
+          [pathIngested, pathOutreach, pathReplied, pathConverted].forEach(el => {
+            el.className = "sf-path-item";
+          });
+
+          // Determine stages status
+          const isConverted = !!associatedDeal;
+          const isReplied = currentOutreachRecord && currentOutreachRecord.status === 'replied';
+          const isOutreachSent = currentOutreachRecord && !!currentOutreachRecord.sent_at;
+
+          if (isConverted) {
+            pathIngested.className = "sf-path-item complete";
+            pathOutreach.className = "sf-path-item complete";
+            pathReplied.className = "sf-path-item complete";
+            pathConverted.className = "sf-path-item active";
+            document.getElementById("crmStatusBadge").classList.remove("hidden");
+          } else if (isReplied) {
+            pathIngested.className = "sf-path-item complete";
+            pathOutreach.className = "sf-path-item complete";
+            pathReplied.className = "sf-path-item active";
+            pathConverted.className = "sf-path-item";
+          } else if (isOutreachSent) {
+            pathIngested.className = "sf-path-item complete";
+            pathOutreach.className = "sf-path-item active";
+            pathReplied.className = "sf-path-item";
+            pathConverted.className = "sf-path-item";
+          } else {
+            pathIngested.className = "sf-path-item active";
+            pathOutreach.className = "sf-path-item";
+            pathReplied.className = "sf-path-item";
+            pathConverted.className = "sf-path-item";
+          }
+        }
+
+        document.getElementById("detailSkeleton").classList.add("hidden");
+        document.getElementById("mainContent").classList.remove("hidden");
+
+      } catch (err) {
+        document.getElementById("detailSkeleton").classList.add("hidden");
+        console.error("Failed to load lead details", err);
+        showError();
+      }
+    }
+
+    function showError() {
+      document.getElementById("detailSkeleton").classList.add("hidden");
+      document.getElementById("mainContent").classList.add("hidden");
+      document.getElementById("errorState").classList.remove("hidden");
+    }
+
+    loadLeadDetails();
+
+    // ============================================================
+    // OUTREACH PANEL JS
+    // ============================================================
+    let currentLeadDbId = null;
+    let currentOutreachRecord = null;
+
+    async function loadOutreachPanel(lead) {
+      currentLeadDbId = lead.db_id;
+
+      // Set LinkedIn people link
+      const btnPeopleLink = document.getElementById("btnPeopleLink");
+      if (lead.decision_link) {
+        btnPeopleLink.href = lead.decision_link;
+      } else if (lead.company_linkedin_page || lead.linkedin) {
+        const base = (lead.company_linkedin_page || lead.linkedin).replace(/\/$/, "");
+        btnPeopleLink.href = base + "/people/";
+      } else {
+        btnPeopleLink.classList.add("opacity-40", "pointer-events-none");
+      }
+
+      // Pre-fill subject and body with AI outreach
+      const company = lead.company_name || "";
+      document.getElementById("outreachSubject").value = `Partnership Opportunity — ${company}`;
+      document.getElementById("outreachBody").value = lead.outreach_msg || `Hi,\n\nI came across ${company} and was genuinely impressed by your work. I believe there's a strong fit between what we offer and what your team is building.\n\nWould love to connect briefly — even a 15-minute call would be valuable.\n\nLooking forward to hearing from you.`;
+
+      // Check if outreach already exists for this lead
+      if (currentLeadDbId) {
+        try {
+          const res = await fetch(`/api/outreach/lead/${currentLeadDbId}`);
+          if (res.ok) {
+            const record = await res.json();
+            if (record) {
+              currentOutreachRecord = record;
+              showExistingOutreach(record);
+              return;
+            }
+          }
+        } catch (e) {
+          console.error("Failed to load outreach record:", e);
+        }
+      }
+    }
+
+    function showExistingOutreach(record) {
+      document.getElementById("outreachForm").classList.add("hidden");
+      document.getElementById("outreachExistingInfo").classList.remove("hidden");
+      document.getElementById("existingContactName").textContent = record.contact_name || "—";
+      document.getElementById("existingContactEmail").textContent = record.contact_email;
+      document.getElementById("existingSentAt").textContent = record.sent_at ? new Date(record.sent_at).toLocaleDateString() : "—";
+
+      // Status badge
+      const badge = document.getElementById("outreachStatusBadge");
+      badge.classList.remove("hidden");
+      const statusMap = {
+        emailed: { label: "Emailed", cls: "bg-blue-100 text-blue-700" },
+        followed_up_1: { label: "Follow-up #1 Sent", cls: "bg-amber-100 text-amber-700" },
+        followed_up_2: { label: "Follow-up #2 Sent", cls: "bg-orange-100 text-orange-700" },
+        replied: { label: "✓ Replied", cls: "bg-emerald-100 text-emerald-700" },
+        no_response: { label: "No Response", cls: "bg-slate-100 text-slate-500" }
+      };
+      const s = statusMap[record.status] || { label: record.status, cls: "bg-slate-100 text-slate-500" };
+      badge.textContent = s.label;
+      badge.className = `text-[10px] font-bold px-2.5 py-1 rounded-full ${s.cls}`;
+    }
+
+    async function openCustomModal({ title, bodyHtml, confirmText = "Save", cancelText = "Cancel", isDanger = false, preConfirm }) {
+      const backdrop = document.getElementById("sfModalBackdrop");
+      const modalBox = document.getElementById("sfModalBox");
+      const modalTitle = document.getElementById("sfModalTitle");
+      const modalBody = document.getElementById("sfModalBody");
+      const btnConfirm = document.getElementById("btnConfirmSfModal");
+      const btnCancel = document.getElementById("btnCancelSfModal");
+      const btnClose = document.getElementById("btnCloseSfModal");
+
+      modalTitle.textContent = title;
+      modalBody.innerHTML = bodyHtml;
+      btnConfirm.textContent = confirmText;
+      if (btnCancel) {
+        btnCancel.textContent = cancelText;
+        btnCancel.classList.remove("hidden");
+      }
+
+      if (isDanger) {
+        btnConfirm.className = "px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded font-bold transition-colors";
+      } else {
+        btnConfirm.className = "px-4 py-2 bg-[#0176D3] hover:bg-[#014486] text-white rounded font-bold transition-colors";
+      }
+
+      // Show modal
+      backdrop.classList.remove("hidden");
+      setTimeout(() => {
+        modalBox.classList.remove("scale-95", "opacity-0");
+        modalBox.classList.add("scale-100", "opacity-100");
+      }, 50);
+
+      // Create or locate validation error message element
+      let errDiv = document.getElementById("sfModalError");
+      if (!errDiv) {
+        errDiv = document.createElement("div");
+        errDiv.id = "sfModalError";
+        errDiv.className = "hidden bg-red-50 border border-red-200 text-red-700 rounded-lg p-2.5 mb-3 font-semibold text-center";
+        modalBody.insertBefore(errDiv, modalBody.firstChild);
+      } else {
+        errDiv.classList.add("hidden");
+      }
+
+      return new Promise((resolve) => {
+        const closeModal = () => {
+          modalBox.classList.remove("scale-100", "opacity-100");
+          modalBox.classList.add("scale-95", "opacity-0");
+          setTimeout(() => {
+            backdrop.classList.add("hidden");
+          }, 300);
+        };
+
+        btnConfirm.onclick = async () => {
+          if (preConfirm) {
+            try {
+              errDiv.classList.add("hidden");
+              const values = await preConfirm();
+              if (values === false) return; // Validation failed
+              closeModal();
+              resolve(values);
+            } catch (err) {
+              errDiv.textContent = err.message || err;
+              errDiv.classList.remove("hidden");
+            }
+          } else {
+            closeModal();
+            resolve(true);
+          }
+        };
+
+        btnCancel.onclick = () => { closeModal(); resolve(null); };
+        btnClose.onclick = () => { closeModal(); resolve(null); };
+      });
+    }
+
+    async function tailwindConfirm({ title, text, confirmText = "Confirm", cancelText = "Cancel", isDanger = false }) {
+      const bodyHtml = `<div class="space-y-2 text-left">
+        <p class="text-xs text-slate-600 leading-relaxed font-medium">${escapeHtml(text)}</p>
+      </div>`;
+      const result = await openCustomModal({ title, bodyHtml, confirmText, cancelText, isDanger });
+      return !!result;
+    }
+
+    function showToast(message, type = 'success') {
+      const container = document.getElementById("toastContainer");
+      if (!container) return;
+
+      const toast = document.createElement("div");
+      const bgClass = type === 'error' ? 'bg-white border-red-200 text-slate-800 shadow-xl shadow-red-500/10' :
+                     type === 'warn'  ? 'bg-white border-amber-200 text-slate-800 shadow-xl shadow-amber-500/10' :
+                                        'bg-white border-blue-200 text-slate-800 shadow-xl shadow-blue-500/10';
+      const icon = type === 'error' ? 'bi-exclamation-triangle-fill text-red-500' :
+                   type === 'warn'  ? 'bi-exclamation-circle-fill text-amber-500' :
+                                      'bi-check-circle-fill text-brand-blue';
+
+      toast.className = `pointer-events-auto flex items-center gap-3 px-4 py-3 rounded-2xl border text-xs font-semibold backdrop-blur-md transition-all duration-300 transform translate-y-4 opacity-0 ${bgClass}`;
+      toast.innerHTML = `<i class="bi ${icon} text-base"></i><span>${escapeHtml(message)}</span>`;
+
+      container.appendChild(toast);
+
+      requestAnimationFrame(() => {
+        toast.classList.remove("translate-y-4", "opacity-0");
+        toast.classList.add("translate-y-0", "opacity-100");
+      });
+
+      setTimeout(() => {
+        toast.classList.remove("translate-y-0", "opacity-100");
+        toast.classList.add("translate-y-4", "opacity-0");
+        setTimeout(() => toast.remove(), 300);
+      }, 3500);
+    }
+
+    document.getElementById("btnSendOutreach").addEventListener("click", async () => {
+      const contactName = document.getElementById("outreachContactName").value.trim();
+      const contactEmail = document.getElementById("outreachContactEmail").value.trim();
+      const subject = document.getElementById("outreachSubject").value.trim();
+      const body = document.getElementById("outreachBody").value.trim();
+
+      if (!contactEmail || !subject || !body) {
+        showToast("Please fill in Contact Email, Subject and Email Body before sending.", "warn");
+        return;
+      }
+
+      const btn = document.getElementById("btnSendOutreach");
+      btn.disabled = true;
+      btn.innerHTML = `<div class="w-4 h-4 border-2 border-white/30 border-t-white rounded-full animate-spin"></div><span>Sending...</span>`;
+
+      try {
+        const urlParams = new URLSearchParams(window.location.search);
+        const res = await fetch("/api/outreach", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            lead_id: currentLeadDbId,
+            lead_company: document.getElementById("leadCompany").textContent,
+            contact_name: contactName,
+            contact_email: contactEmail,
+            day0_subject: subject,
+            day0_body: body
+          })
+        });
+        const data = await res.json();
+        if (res.ok) {
+          currentOutreachRecord = data.record;
+          showExistingOutreach(data.record);
+          showToast(data.message, "success");
+        } else {
+          showToast(`Failed to send: ${data.error}`, "error");
+          btn.disabled = false;
+          btn.innerHTML = `<i class="bi bi-send-fill"></i><span>Send Outreach</span>`;
+        }
+      } catch (e) {
+        showToast("Error sending outreach: " + e.message, "error");
+        btn.disabled = false;
+        btn.innerHTML = `<i class="bi bi-send-fill"></i><span>Send Outreach</span>`;
+      }
+    });
+
+    document.getElementById("btnMarkReplied").addEventListener("click", async () => {
+      if (!currentOutreachRecord) return;
+      const isConfirmed = await tailwindConfirm({
+        title: "Mark as Replied?",
+        text: "Automated follow-up emails will stop for this contact.",
+        confirmText: "Yes, Mark Replied"
+      });
+      if (!isConfirmed) return;
+
+      try {
+        await fetch(`/api/outreach/${currentOutreachRecord.id}/status`, {
+          method: "PATCH",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ status: "replied" })
+        });
+        currentOutreachRecord.status = "replied";
+        showExistingOutreach(currentOutreachRecord);
+        showToast("Marked outreach as replied!", "success");
+      } catch (e) {
+        showToast("Failed to update status.", "error");
+      }
+    });
+
+    document.getElementById("btnSendFollowup").addEventListener("click", async () => {
+      if (!currentOutreachRecord) return;
+      await openSendFollowupModal(currentOutreachRecord);
+    });
+
+    async function openSendFollowupModal(record) {
+      if (!record) return;
+      const nextNum = record.status === 'emailed' ? 1 : 2;
+      const company = record.lead_company || document.getElementById("leadCompany").textContent || "your team";
+      const name = record.contact_name || "there";
+
+      const defaultSubject = nextNum === 1 
+        ? `Re: ${record.day0_subject || 'Partnership Opportunity'}`
+        : `Final note: ${record.day0_subject || 'Partnership Opportunity'}`;
+
+      const defaultBody = nextNum === 1
+        ? `Hi ${name},\n\nFollowing up on my previous email regarding a potential collaboration with ${company}. I wanted to make sure my note didn't get buried in your inbox.\n\nWould love to connect briefly — even a 10-15 minute call would be great. Happy to work around your schedule.\n\nLooking forward to hearing from you.`
+        : `Hi ${name},\n\nFinal quick follow-up regarding ${company}. I know you're busy, so I'll keep this brief.\n\nIf you're interested in exploring how we can support your initiatives, let me know when would be a good time to connect. Otherwise, I won't bother you further.\n\nBest regards,`;
+
+      const formValues = await openCustomModal({
+        title: `Send Follow-up #${nextNum} to ${escapeHtml(name)}`,
+        bodyHtml: `
+          <div class="space-y-3 text-left">
+            <p class="text-xs text-slate-600 font-medium">Review and edit the pre-filled follow-up email before sending to this lead:</p>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Email Subject</label>
+              <input id="swal-fu-subject" class="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:border-brand-blue font-semibold text-slate-800" value="${escapeHtml(defaultSubject)}">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1 flex items-center justify-between">
+                <span>Follow-Up Email Body</span>
+                <span class="text-brand-blue font-bold text-[10px]">✏️ Editable</span>
+              </label>
+              <textarea id="swal-fu-body" rows="6" class="w-full bg-white border border-slate-200 rounded-xl p-2.5 text-xs outline-none focus:border-brand-blue text-slate-800 leading-relaxed font-sans">${escapeHtml(defaultBody)}</textarea>
+            </div>
+          </div>
+        `,
+        confirmText: `Send Follow-up #${nextNum}`,
+        preConfirm: () => {
+          const sub = document.getElementById('swal-fu-subject').value.trim();
+          const body = document.getElementById('swal-fu-body').value.trim();
+          if (!sub || !body) throw new Error("Subject and Body cannot be empty");
+          return { subject: sub, body: body };
+        }
+      });
+
+      if (formValues) {
+        try {
+          showToast(`Sending Follow-up #${nextNum}...`, "info");
+          const res = await fetch(`/api/outreach/${record.id}/send-followup`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formValues)
+          });
+          const data = await res.json();
+          if (res.ok) {
+            currentOutreachRecord = data.record;
+            showExistingOutreach(data.record);
+            showToast(data.message, "success");
+          } else {
+            showToast(`Failed to send follow-up: ${data.error}`, "error");
+          }
+        } catch (e) {
+          showToast("Error sending follow-up: " + e.message, "error");
+        }
+      }
+    }
+
+    document.getElementById("btnDeleteOutreach").addEventListener("click", async () => {
+      if (!currentOutreachRecord) return;
+      const isConfirmed = await tailwindConfirm({
+        title: "Delete Outreach Record?",
+        text: "This action cannot be undone.",
+        isDanger: true,
+        confirmText: "Yes, Delete"
+      });
+      if (!isConfirmed) return;
+
+      try {
+        await fetch(`/api/outreach/${currentOutreachRecord.id}`, { method: "DELETE" });
+        currentOutreachRecord = null;
+        document.getElementById("outreachExistingInfo").classList.add("hidden");
+        document.getElementById("outreachForm").classList.remove("hidden");
+        document.getElementById("outreachStatusBadge").classList.add("hidden");
+        showToast("Outreach record deleted.", "info");
+      } catch (e) {
+        showToast("Failed to delete outreach record.", "error");
+      }
+    });
+
+    document.getElementById("btnDetailConvert").addEventListener("click", async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const leadId = urlParams.get('id');
+      if (!leadId) return;
+
+      const companyName = document.getElementById("leadCompany").textContent;
+      const email = document.getElementById("leadEmail").textContent;
+      const position = document.getElementById("leadPosition").textContent;
+
+      const formValues = await openCustomModal({
+        title: 'Convert Lead to CRM',
+        bodyHtml:
+          `<div class="space-y-3 text-left">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Company Name</label>
+              <input id="swal-company" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" value="${companyName}">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Contact Name</label>
+              <input id="swal-contact-name" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" value="Hiring Manager (${position})">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Contact Email</label>
+              <input id="swal-email" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" value="${email === 'N/A' ? '' : email}">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Deal Title</label>
+              <input id="swal-deal-title" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" value="${position} - ${companyName}">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Deal Value ($)</label>
+              <input id="swal-amount" type="number" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" value="15000">
+            </div>
+           </div>`,
+        confirmText: 'Convert',
+        preConfirm: () => {
+          const comp = document.getElementById('swal-company').value.trim();
+          if (!comp) throw new Error('Company Name is required');
+          return {
+            company_name: comp,
+            contact_name: document.getElementById('swal-contact-name').value,
+            contact_email: document.getElementById('swal-email').value,
+            deal_title: document.getElementById('swal-deal-title').value,
+            deal_amount: parseFloat(document.getElementById('swal-amount').value || 0)
+          }
+        }
+      });
+
+      if (formValues) {
+        try {
+          const res = await fetch(`/api/leads/${leadId}/convert`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formValues)
+          });
+          const data = await res.json();
+          if (res.ok) {
+            showToast(data.message || "Lead converted successfully!", "success");
+            document.getElementById("crmStatusBadge").classList.remove("hidden");
+          } else {
+            showToast(data.error || "Failed to convert", "error");
+          }
+        } catch (e) {
+          showToast(e.message || "Error converting lead", "error");
+        }
+      }
+    });
+
+    document.getElementById("btnDetailAddTask").addEventListener("click", async () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const leadId = urlParams.get('id');
+      if (!leadId) return;
+
+      const formValues = await openCustomModal({
+        title: 'Schedule Follow-up Task',
+        bodyHtml:
+          `<div class="space-y-3 text-left">
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Task Title *</label>
+              <input id="task-title" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" placeholder="e.g. Schedule Call">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Description</label>
+              <input id="task-desc" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Due Date *</label>
+              <input id="task-due" type="date" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue" value="${new Date().toISOString().split('T')[0]}">
+            </div>
+            <div>
+              <label class="block text-xs font-bold text-slate-500 uppercase mb-1">Priority</label>
+              <select id="task-priority" class="w-full bg-white border border-slate-200 rounded-lg p-2 text-xs outline-none focus:border-brand-blue h-9">
+                <option value="low">Low</option>
+                <option value="medium" selected>Medium</option>
+                <option value="high">High</option>
+              </select>
+            </div>
+           </div>`,
+        confirmText: 'Save Task',
+        preConfirm: () => {
+          const title = document.getElementById('task-title').value.trim();
+          const due = document.getElementById('task-due').value;
+          if (!title) throw new Error('Task Title is required');
+          if (!due) throw new Error('Due Date is required');
+          return {
+            title,
+            description: document.getElementById('task-desc').value,
+            due_date: due,
+            priority: document.getElementById('task-priority').value,
+            lead_id: leadId
+          }
+        }
+      });
+
+      if (formValues) {
+        try {
+          const res = await fetch("/api/tasks", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(formValues)
+          });
+          if (res.ok) {
+            showToast("Task scheduled successfully!", "success");
+          } else {
+            showToast("Failed to schedule task", "error");
+          }
+        } catch (e) {
+          showToast("Error scheduling task: " + e.message, "error");
+        }
+      }
+    });
+  </script>
+  
+  <!-- Salesforce-style Tailwind Modal Backdrop -->
+  <div id="sfModalBackdrop" class="fixed inset-0 bg-[#032D60]/50 backdrop-blur-[2px] z-50 hidden transition-opacity duration-300 flex items-center justify-center p-4">
+    <!-- Modal Dialog Box -->
+    <div id="sfModalBox" class="bg-white rounded-lg shadow-2xl border border-[#DDDBDA] w-full max-w-lg transform scale-95 opacity-0 transition-all duration-300 flex flex-col max-h-[90vh]">
+      <!-- Header -->
+      <div class="px-6 py-4 border-b border-[#DDDBDA] flex items-center justify-between bg-slate-50 rounded-t-lg">
+        <h3 id="sfModalTitle" class="font-outfit font-bold text-sm text-[#181818] uppercase tracking-wide">Modal Title</h3>
+        <button id="btnCloseSfModal" class="text-slate-400 hover:text-slate-600 text-lg focus:outline-none">
+          <i class="bi bi-x-lg"></i>
+        </button>
+      </div>
+      <!-- Body -->
+      <div id="sfModalBody" class="px-6 py-4 overflow-y-auto text-xs space-y-4 text-slate-700 flex-1">
+        <!-- Content gets injected dynamically -->
+      </div>
+      <!-- Footer -->
+      <div class="px-6 py-3.5 border-t border-[#DDDBDA] flex items-center justify-end gap-2 bg-slate-50 rounded-b-lg">
+        <button id="btnCancelSfModal" class="px-4 py-2 border border-[#DDDBDA] text-[#514F4D] bg-white rounded font-bold hover:bg-slate-100 transition-colors">Cancel</button>
+        <button id="btnConfirmSfModal" class="px-4 py-2 bg-[#0176D3] text-white rounded font-bold hover:bg-[#014486] transition-colors">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Toast Notification Container -->
+  <div id="toastContainer" class="fixed bottom-5 right-5 z-50 flex flex-col gap-2 pointer-events-none"></div>
+
+  <!-- MOBILE STICKY ACTION BAR FOR DETAIL PAGE (Visible on < 768px screens) -->
+  <div id="mobileDetailActionBar" class="md:hidden fixed bottom-0 left-0 right-0 z-40 bg-white/95 backdrop-blur-lg border-t border-slate-200 shadow-[0_-4px_24px_rgba(15,23,42,0.1)] px-3 py-2 flex items-center justify-between gap-2 font-sans">
+    <button onclick="document.getElementById('outreachPanel')?.scrollIntoView({ behavior: 'smooth' })" class="flex-1 py-2.5 px-3 bg-emerald-600 active:bg-emerald-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-emerald-600/20 active:scale-95 transition-all">
+      <i class="bi bi-send-fill text-xs"></i>
+      <span>Outreach</span>
+    </button>
+    <button onclick="document.getElementById('btnDetailConvert')?.click()" class="flex-1 py-2.5 px-3 bg-purple-600 active:bg-purple-700 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-purple-600/20 active:scale-95 transition-all">
+      <i class="bi bi-building text-xs"></i>
+      <span>Convert</span>
+    </button>
+    <button onclick="document.getElementById('btnDetailAddTask')?.click()" class="flex-1 py-2.5 px-3 bg-rose-500 active:bg-rose-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 shadow-md shadow-rose-500/20 active:scale-95 transition-all">
+      <i class="bi bi-calendar-plus text-xs"></i>
+      <span>Task</span>
+    </button>
+  </div>
+
+  <!-- AOS Animate On Scroll JS CDN -->
+  <script src="https://unpkg.com/aos@2.3.1/dist/aos.js"></script>
+  <script>
+    AOS.init({ duration: 800, once: true, easing: 'ease-out-cubic' });
+  </script>
+
+  <!-- Puter.js Cloud & AI Integration -->
+  <script src="https://js.puter.com/v2/"></script>
+  <script src="puter-integration.js"></script>
+</body>
+</html>

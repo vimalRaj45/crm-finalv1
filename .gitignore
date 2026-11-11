@@ -3,3 +3,6 @@ node_modules/
 job-details.json
 service-account.json
 .history/
+baileys_auth_info/
+backend/baileys_auth_info/
+

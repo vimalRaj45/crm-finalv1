@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Connect WhatsApp - CRM Alerts Gateway</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap-icons@1.11.3/font/bootstrap-icons.css" rel="stylesheet">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-dark: #090d16;
+      --card-bg: #111827;
+      --card-border: #1f2937;
+      --brand-green: #10b981;
+      --brand-emerald: #059669;
+      --brand-blue: #3b82f6;
+      --accent-glow: rgba(16, 185, 129, 0.15);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: radial-gradient(circle at top center, #131d31 0%, #090d16 100%);
+      color: #f8fafc;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+      padding: 24px;
+    }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      max-width: 480px;
+      width: 100%;
+      padding: 32px 28px;
+      text-align: center;
+      box-shadow: 0 25px 60px -15px rgba(0,0,0,0.7), 0 0 40px var(--accent-glow);
+      position: relative;
+    }
+    .header-logo {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      width: 52px;
+      height: 52px;
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 16px;
+      color: var(--brand-green);
+      font-size: 26px;
+      margin-bottom: 16px;
+    }
+    .badge-status {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 6px 16px;
+      border-radius: 99px;
+      font-size: 12px;
+      font-weight: 700;
+      margin-bottom: 16px;
+    }
+    .badge-amber { background: rgba(245,158,11,0.15); color: #fbbf24; border: 1px solid rgba(245,158,11,0.3); }
+    .badge-emerald { background: rgba(16,185,129,0.15); color: #34d399; border: 1px solid rgba(16,185,129,0.3); }
+    .badge-blue { background: rgba(59,130,246,0.15); color: #60a5fa; border: 1px solid rgba(59,130,246,0.3); }
+    .badge-red { background: rgba(239,68,68,0.15); color: #f87171; border: 1px solid rgba(239,68,68,0.3); }
+
+    h2 { font-size: 22px; font-weight: 800; margin-bottom: 8px; color: #ffffff; letter-spacing: -0.02em; }
+    p { font-size: 13px; color: #94a3b8; line-height: 1.5; margin-bottom: 20px; }
+    
+    /* Tabs */
+    .tabs-nav {
+      display: flex;
+      background: #090d16;
+      padding: 4px;
+      border-radius: 14px;
+      margin-bottom: 22px;
+      border: 1px solid #1f2937;
+      gap: 4px;
+    }
+    .tab-btn {
+      flex: 1;
+      padding: 10px 14px;
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 10px;
+      border: none;
+      background: transparent;
+      color: #94a3b8;
+      cursor: pointer;
+      transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+    }
+    .tab-btn.active {
+      background: #2563eb;
+      color: #ffffff;
+      box-shadow: 0 4px 12px rgba(37,99,235,0.4);
+    }
+    
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    .qr-container-outer {
+      display: flex;
+      justify-content: center;
+      margin-bottom: 20px;
+    }
+    .qr-box {
+      background: #ffffff;
+      padding: 14px;
+      border-radius: 20px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+      width: 260px;
+      height: 260px;
+      box-sizing: border-box;
+      position: relative;
+    }
+    .qr-box img {
+      width: 100%;
+      height: 100%;
+      display: block;
+      border-radius: 12px;
+    }
+    
+    .code-box {
+      background: #090d16;
+      border: 1px dashed #38bdf8;
+      border-radius: 18px;
+      padding: 20px;
+      margin-bottom: 20px;
+      text-align: center;
+    }
+    .code-display {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 32px;
+      font-weight: 900;
+      letter-spacing: 4px;
+      color: #38bdf8;
+      margin: 12px 0;
+      user-select: all;
+    }
+    
+    .input-group { display: flex; gap: 8px; margin-bottom: 16px; }
+    .input-phone {
+      flex: 1;
+      background: #090d16;
+      border: 1px solid #374151;
+      border-radius: 12px;
+      padding: 12px 14px;
+      font-family: monospace;
+      font-size: 13px;
+      color: #f8fafc;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .input-phone:focus { border-color: #38bdf8; }
+
+    .steps {
+      text-align: left;
+      background: #090d16;
+      padding: 14px 16px;
+      border-radius: 14px;
+      margin-bottom: 20px;
+      font-size: 12px;
+      color: #cbd5e1;
+      line-height: 1.6;
+      border: 1px solid #1f2937;
+    }
+    .steps ol { margin: 0; padding-left: 18px; }
+    .steps li { margin-bottom: 4px; }
+    .steps li:last-child { margin-bottom: 0; }
+    
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      text-decoration: none;
+      background: #2563eb;
+      color: #ffffff;
+      font-weight: 700;
+      font-size: 13px;
+      padding: 11px 20px;
+      border-radius: 12px;
+      transition: all 0.2s;
+      cursor: pointer;
+      border: none;
+    }
+    .btn:hover { background: #1d4ed8; transform: translateY(-1px); }
+    .btn:active { transform: translateY(0); }
+    .btn-secondary { background: #1f2937; color: #cbd5e1; border: 1px solid #374151; }
+    .btn-secondary:hover { background: #374151; color: #ffffff; }
+    .btn-green { background: #10b981; }
+    .btn-green:hover { background: #059669; }
+    .btn-red { background: #dc2626; }
+    .btn-red:hover { background: #b91c1c; }
+
+    .spinner {
+      border: 3px solid rgba(255,255,255,0.1);
+      border-top: 3px solid #38bdf8;
+      border-radius: 50%;
+      width: 38px;
+      height: 38px;
+      animation: spin 1s linear infinite;
+    }
+    @keyframes spin { 0% { transform: rotate(0deg); } 100% { transform: rotate(360deg); } }
+
+    .pulse-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #10b981;
+      box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7);
+      animation: pulse 1.6s infinite;
+    }
+    @keyframes pulse {
+      0% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0.7); }
+      70% { transform: scale(1); box-shadow: 0 0 0 6px rgba(16, 185, 129, 0); }
+      100% { transform: scale(0.95); box-shadow: 0 0 0 0 rgba(16, 185, 129, 0); }
+    }
+  </style>
+</head>
+<body>
+  <div class="card" id="cardContainer">
+    <div class="header-logo">
+      <i class="bi bi-whatsapp"></i>
+    </div>
+
+    <div class="badge-status badge-amber" id="statusBadge">
+      <span class="spinner" style="width: 10px; height: 10px; border-width: 2px;"></span>
+      <span id="statusText">Starting WhatsApp Baileys Gateway...</span>
+    </div>
+
+    <h2>Connect WhatsApp Account</h2>
+    <p>Link your WhatsApp to receive real-time AI CRM alerts, hot lead updates, and instant email notifications.</p>
+    
+    <!-- Pairing Tabs Navigation -->
+    <div class="tabs-nav">
+      <button class="tab-btn active" onclick="switchTab('qr')">
+        <i class="bi bi-qr-code"></i> Scan QR Code
+      </button>
+      <button class="tab-btn" onclick="switchTab('code')">
+        <i class="bi bi-phone"></i> 8-Digit Code
+      </button>
+    </div>
+
+    <!-- Tab 1: QR Code Scanner -->
+    <div class="tab-content active" id="tabQR">
+      <div class="qr-container-outer">
+        <div class="qr-box" id="qrContainer">
+          <div style="text-align: center; color: #475569;">
+            <div class="spinner" style="margin: 0 auto 12px;"></div>
+            <div style="font-size: 11px; font-weight: 600;">Generating QR Code...</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="steps">
+        <ol>
+          <li>Open <strong>WhatsApp</strong> on your mobile phone.</li>
+          <li>Tap <strong>Settings (⚙)</strong> or <strong>Menu (⋮)</strong> &gt; <strong>Linked Devices</strong>.</li>
+          <li>Tap <strong>Link a Device</strong> and point your camera at this QR code.</li>
+        </ol>
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap;">
+        <a href="/" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Return to CRM</a>
+        <button onclick="restartGateway()" class="btn" id="btnRefreshQR"><i class="bi bi-arrow-repeat"></i> Refresh QR</button>
+      </div>
+    </div>
+
+    <!-- Tab 2: 8-Digit Pairing Code -->
+    <div class="tab-content" id="tabCode">
+      <div class="input-group">
+        <input type="text" id="phoneInput" class="input-phone" placeholder="e.g. 918807099288 (Country code without +)" value="918807099288" />
+        <button onclick="getPairingCode()" class="btn" id="btnGetCode" style="white-space: nowrap;">
+          <i class="bi bi-key-fill"></i> Get Code
+        </button>
+      </div>
+
+      <div id="codeResultContainer" style="display: none;">
+        <div class="code-box">
+          <span style="font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: #94a3b8; font-weight: 700;">Enter this code on your phone:</span>
+          <div class="code-display" id="pairingCodeDisplay">---- ----</div>
+          <button onclick="copyPairingCode()" class="btn btn-secondary" style="font-size: 11px; padding: 6px 14px; border-radius: 8px;">
+            <i class="bi bi-clipboard"></i> Copy Code
+          </button>
+        </div>
+
+        <div class="steps">
+          <ol>
+            <li>Open <strong>WhatsApp</strong> on your mobile phone.</li>
+            <li>Tap <strong>Linked Devices</strong> &gt; <strong>Link a Device</strong>.</li>
+            <li>Tap <strong>"Link with phone number instead"</strong> at the bottom.</li>
+            <li>Enter the 8-character code shown above.</li>
+          </ol>
+        </div>
+      </div>
+
+      <div id="codeInitialPrompt" style="padding: 16px 0; color: #64748b; font-size: 12px;">
+        <i class="bi bi-info-circle text-blue-400"></i> Enter your mobile number with country code above and click "Get Code".
+      </div>
+
+      <div style="display: flex; justify-content: center; gap: 10px; flex-wrap: wrap; margin-top: 14px;">
+        <a href="/" class="btn btn-secondary"><i class="bi bi-arrow-left"></i> Return to CRM</a>
+      </div>
+    </div>
+
+  </div>
+
+  <script>
+    let isConnected = false;
+    let currentPairingCode = '';
+    let pollFailures = 0;
+
+    function switchTab(tab) {
+      document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
+      document.querySelectorAll('.tab-content').forEach(c => c.classList.remove('active'));
+
+      if (tab === 'qr') {
+        document.querySelectorAll('.tab-btn')[0].classList.add('active');
+        document.getElementById('tabQR').classList.add('active');
+      } else {
+        document.querySelectorAll('.tab-btn')[1].classList.add('active');
+        document.getElementById('tabCode').classList.add('active');
+      }
+    }
+
+    async function getPairingCode() {
+      const phoneInput = document.getElementById('phoneInput');
+      const btn = document.getElementById('btnGetCode');
+      const phone = phoneInput ? phoneInput.value.trim() : '';
+
+      if (!phone) {
+        alert('Please enter your phone number with country code (e.g. 918807099288).');
+        return;
+      }
+
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;"></span> Generating...';
+
+      try {
+        const res = await fetch('/api/alerts/whatsapp-pairing-code', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ phone })
+        });
+
+        const data = await res.json();
+        if (data.success && data.pairingCode) {
+          currentPairingCode = data.pairingCode;
+          document.getElementById('pairingCodeDisplay').innerText = data.pairingCode;
+          document.getElementById('codeResultContainer').style.display = 'block';
+          document.getElementById('codeInitialPrompt').style.display = 'none';
+        } else {
+          alert('Error: ' + (data.error || 'Failed to generate pairing code. Please make sure the server is active.'));
+        }
+      } catch (err) {
+        alert('Request failed: ' + err.message);
+      } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="bi bi-key-fill"></i> Get Code';
+      }
+    }
+
+    function copyPairingCode() {
+      if (!currentPairingCode) return;
+      const clean = currentPairingCode.replace('-', '');
+      navigator.clipboard.writeText(clean).then(() => {
+        alert('Pairing Code copied to clipboard: ' + clean);
+      });
+    }
+
+    async function checkStatus() {
+      if (isConnected) return;
+      try {
+        const res = await fetch('/api/alerts/whatsapp-status');
+        if (res.ok) {
+          pollFailures = 0;
+          const data = await res.json();
+          const badge = document.getElementById('statusBadge');
+          const qrContainer = document.getElementById('qrContainer');
+          const statusText = document.getElementById('statusText');
+
+          if (data.connected) {
+            isConnected = true;
+            document.getElementById('cardContainer').innerHTML = `
+              <div class="header-logo" style="background:rgba(16,185,129,0.2);">
+                <i class="bi bi-shield-check"></i>
+              </div>
+              <div class="badge-status badge-emerald">
+                <span class="pulse-dot"></span>
+                <span>Connected: +${data.user || 'Linked Device'}</span>
+              </div>
+              <h2 style="color:#10b981;">WhatsApp Connected!</h2>
+              <p>Your WhatsApp account is successfully connected. Real-time CRM notifications and reply alerts will be delivered immediately.</p>
+              <div style="background:#090d16; border:1px solid #1f2937; padding:16px; border-radius:14px; font-family:monospace; color:#38bdf8; margin-bottom:24px; font-size:13px;">
+                Engine: Baileys Multi-Device | Session: Active &amp; Encrypted
+              </div>
+              <div style="display:flex; justify-content:center; gap:12px; flex-wrap:wrap;">
+                <a href="/" class="btn btn-green"><i class="bi bi-house-door-fill"></i> Open CRM Portal</a>
+                <button onclick="logoutGateway()" class="btn btn-secondary"><i class="bi bi-box-arrow-right"></i> Disconnect</button>
+              </div>
+            `;
+            return;
+          }
+
+          if (data.qrDataUrl) {
+            badge.className = 'badge-status badge-amber';
+            statusText.innerText = 'Scan QR with WhatsApp';
+            qrContainer.innerHTML = '<img src="' + data.qrDataUrl + '" alt="WhatsApp QR Code" />';
+          } else if (data.state === 'connecting') {
+            badge.className = 'badge-status badge-blue';
+            statusText.innerText = 'Initializing WhatsApp socket...';
+          } else if (data.lastError) {
+            badge.className = 'badge-status badge-red';
+            statusText.innerText = 'Reconnecting (' + (data.lastError.length > 25 ? data.lastError.substring(0,25) + '...' : data.lastError) + ')';
+          }
+        } else {
+          pollFailures++;
+        }
+      } catch (err) {
+        pollFailures++;
+        if (pollFailures > 5) {
+          const badge = document.getElementById('statusBadge');
+          const statusText = document.getElementById('statusText');
+          if (badge && statusText) {
+            badge.className = 'badge-status badge-red';
+            statusText.innerText = 'Connecting to server...';
+          }
+        }
+      }
+    }
+
+    async function restartGateway() {
+      const btn = document.getElementById('btnRefreshQR');
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="spinner" style="width:12px;height:12px;border-width:2px;display:inline-block;vertical-align:middle;"></span> Refreshing...';
+      }
+      const qrContainer = document.getElementById('qrContainer');
+      if (qrContainer) {
+        qrContainer.innerHTML = '<div style="text-align: center; color: #475569;"><div class="spinner" style="margin: 0 auto 12px;"></div><div style="font-size: 11px; font-weight: 600;">Regenerating QR...</div></div>';
+      }
+      try {
+        await fetch('/api/alerts/whatsapp-restart', { method: 'POST' });
+        setTimeout(checkStatus, 1000);
+      } catch (e) {
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<i class="bi bi-arrow-repeat"></i> Refresh QR';
+        }
+      }
+    }
+
+    async function logoutGateway() {
+      if (!confirm("Are you sure you want to disconnect your WhatsApp device?")) return;
+      await fetch('/api/alerts/whatsapp-logout', { method: 'POST' });
+      location.reload();
+    }
+
+    checkStatus();
+    setInterval(checkStatus, 2000);
+  </script>
+</body>
+</html>
